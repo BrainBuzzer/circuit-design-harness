@@ -793,9 +793,7 @@ function ConversationPane({
           <ModelSelect projectId={project.id} snapshot={agentSnapshot} onSetModel={onSetModel} />
         )}
         <Button
-          aria-label={
-            wakeWordEnabled ? "Disable LiveKit wake word" : "Enable LiveKit wake word"
-          }
+          aria-label={wakeWordEnabled ? "Disable LiveKit wake word" : "Enable LiveKit wake word"}
           aria-pressed={wakeWordEnabled}
           disabled={!preferences}
           onClick={() => {

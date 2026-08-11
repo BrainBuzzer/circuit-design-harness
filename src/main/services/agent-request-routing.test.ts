@@ -40,8 +40,10 @@ describe("buildAgentRequestRouting", () => {
     expect(routing).toContain("cameraChecklist");
     expect(routing).toContain("Do not call propose_circuit_changes");
     expect(routing).toMatch(/cannot establish hidden connectivity/i);
-    const step0 = getStarterLessons().find((l) => l.id === "uno-led-series-resistor")!.steps[0]!;
-    expect(routing).toContain(step0.id);
+    const lesson = getStarterLessons().find((l) => l.id === "uno-led-series-resistor");
+    const step0 = lesson?.steps[0];
+    expect(step0).toBeDefined();
+    expect(routing).toContain(step0?.id);
   });
 
   it("keeps ESP32 Pomodoro as advanced freeform path when no coach lesson is active", () => {

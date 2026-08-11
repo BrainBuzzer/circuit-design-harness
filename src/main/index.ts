@@ -231,13 +231,14 @@ function registerIpcHandlers(
   remoteCameraService: RemoteCameraService,
   transcriptionService: TranscriptionService,
   preferencesService: PreferencesService,
-  voiceAssetService: VoiceAssetService,
+  _voiceAssetService: VoiceAssetService,
   ttsService: TtsService,
   wakeWordService: WakeWordService,
   voiceRuntimeService: VoiceRuntimeService,
   getCombinedVoiceStatus: () => VoiceAssetStatus,
   ensureVoiceSetup: () => Promise<VoiceAssetStatus>,
 ): void {
+  void _voiceAssetService;
   ipcMain.handle("app:get-info", (event): AppInfo => {
     assertTrustedIpc(event);
 

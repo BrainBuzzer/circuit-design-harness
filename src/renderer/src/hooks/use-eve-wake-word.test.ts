@@ -75,7 +75,11 @@ describe("LiveKit wake phrase helpers", () => {
     });
 
     let detectionListener:
-      | ((event: { name: string; confidence: number; source?: "livekit" | "whisper_fallback" }) => void)
+      | ((event: {
+          name: string;
+          confidence: number;
+          source?: "livekit" | "whisper_fallback";
+        }) => void)
       | undefined;
     const startWakeWord = vi.fn(async () => undefined);
     const stopWakeWord = vi.fn(async () => undefined);

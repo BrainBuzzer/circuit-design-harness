@@ -54,7 +54,7 @@ async function executeTool(
   // tool bodies with empty session context.
   const result = await tool.execute("call-1", params as never, undefined, undefined, {} as never);
   const textPart = result.content.find((part) => part.type === "text");
-  if (!textPart || textPart.type !== "text") {
+  if (textPart?.type !== "text") {
     throw new Error("expected text content");
   }
   return { text: textPart.text, details: result.details };
