@@ -1,4 +1,4 @@
-import type { BreadboardHole } from "@domain/assembly";
+import { type BreadboardHole, buildBreadboardOccupancy } from "@domain/assembly";
 import type { AssemblySnapshot } from "@shared/assembly-contract";
 import type { CircuitSnapshot } from "@shared/circuit-contract";
 import { BotIcon, CableIcon, CircleAlertIcon, ShieldCheckIcon } from "lucide-react";
@@ -23,6 +23,17 @@ const ROWS = [
 ] as const;
 const COLUMNS = Array.from({ length: 30 }, (_, index) => index + 1);
 
+const JUMPER_COLORS: Record<string, string> = {
+  black: "#1e293b",
+  red: "#dc2626",
+  orange: "#ea580c",
+  yellow: "#ca8a04",
+  green: "#16a34a",
+  blue: "#2563eb",
+  violet: "#7c3aed",
+  white: "#e2e8f0",
+};
+
 export function BreadboardEditor({
   assembly,
   circuit,
@@ -32,22 +43,29 @@ export function BreadboardEditor({
 }): React.JSX.Element {
   const document = assembly?.document;
   const circuitDocument = circuit?.document;
-  const occupied = useMemo(() => {
-    const holes = new Map<string, string>();
-    for (const placement of document?.placements ?? []) {
-      const reference = circuitDocument?.components.find(
-        (candidate) => candidate.id === placement.componentId,
-      )?.reference;
-      for (const pin of placement.pins) {
-        holes.set(pin.hole, `${reference ?? "?"}.${pin.pinId}`);
+  const holePositions = useMemo(() => {
+    const positions = new Map<string, { x: number; y: number }>();
+    for (const [rowIndex, row] of ROWS.entries()) {
+      for (const column of COLUMNS) {
+        const hole = `${row}${column}`;
+        positions.set(hole, {
+          x: 30 + column * 29,
+          y: 24 + rowIndex * 28 + (rowIndex > 6 ? 12 : 0),
+        });
       }
     }
-    for (const [index, jumper] of (document?.jumpers ?? []).entries()) {
-      holes.set(jumper.from, `J${index + 1}`);
-      holes.set(jumper.to, `J${index + 1}`);
+    return positions;
+  }, []);
+
+  const occupied = useMemo(() => {
+    if (!document || !circuitDocument) {
+      return new Map<string, string>();
     }
-    return holes;
+    return buildBreadboardOccupancy(document, circuitDocument);
   }, [circuitDocument, document]);
+
+  const jumpers = document?.jumpers ?? [];
+  const placementCount = document?.placements.length ?? 0;
 
   return (
     <section
@@ -70,8 +88,8 @@ export function BreadboardEditor({
             </Badge>
           ) : null}
           <span className="text-xs text-slate-500">
-            Assembly rev {document?.revision ?? "…"} · circuit rev{" "}
-            {document?.circuitRevision ?? "…"}
+            {placementCount} part(s) · {jumpers.length} jumper(s) · assembly rev{" "}
+            {document?.revision ?? "…"} · circuit rev {document?.circuitRevision ?? "…"}
           </span>
         </div>
       </div>
@@ -89,11 +107,31 @@ export function BreadboardEditor({
             viewBox="0 0 960 420"
           >
             <title>Solderless breadboard holes</title>
+            {jumpers.map((jumper, index) => {
+              const from = holePositions.get(jumper.from);
+              const to = holePositions.get(jumper.to);
+              if (!from || !to) return null;
+              return (
+                <line
+                  key={jumper.id}
+                  aria-label={`Jumper J${index + 1} ${jumper.color} from ${jumper.from} to ${jumper.to}`}
+                  stroke={JUMPER_COLORS[jumper.color] ?? "#334155"}
+                  strokeLinecap="round"
+                  strokeWidth="3"
+                  x1={from.x}
+                  x2={to.x}
+                  y1={from.y}
+                  y2={to.y}
+                />
+              );
+            })}
             {ROWS.flatMap((row, rowIndex) =>
               COLUMNS.map((column) => {
                 const hole = `${row}${column}` as BreadboardHole;
-                const x = 30 + column * 29;
-                const y = 24 + rowIndex * 28 + (rowIndex > 6 ? 12 : 0);
+                const position = holePositions.get(hole) ?? {
+                  x: 30 + column * 29,
+                  y: 24 + rowIndex * 28 + (rowIndex > 6 ? 12 : 0),
+                };
                 const label = occupied.get(hole);
                 return (
                   <g aria-label={`${hole}${label ? ` occupied by ${label}` : " empty"}`} key={hole}>
@@ -101,8 +139,8 @@ export function BreadboardEditor({
                       className={
                         label ? "fill-amber-400 stroke-amber-800" : "fill-white stroke-slate-500"
                       }
-                      cx={x}
-                      cy={y}
+                      cx={position.x}
+                      cy={position.y}
                       r="7"
                     />
                     {label && (
@@ -111,7 +149,7 @@ export function BreadboardEditor({
                       </title>
                     )}
                     {column === 1 && (
-                      <text className="fill-slate-600 text-[9px]" x="3" y={y + 3}>
+                      <text className="fill-slate-600 text-[9px]" x="3" y={position.y + 3}>
                         {row}
                       </text>
                     )}
@@ -121,6 +159,15 @@ export function BreadboardEditor({
             )}
           </svg>
         </div>
+        {jumpers.length > 0 ? (
+          <ul className="mt-2 grid gap-1 text-[11px] text-slate-600" aria-label="Jumper list">
+            {jumpers.map((jumper, index) => (
+              <li key={jumper.id}>
+                J{index + 1}: {jumper.color} {jumper.from} → {jumper.to}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {assembly?.diagnostics.length ? (
           <div className="mt-2 space-y-1" role="status">
             {assembly.diagnostics.map((diagnostic) => (

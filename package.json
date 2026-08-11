@@ -1,6 +1,6 @@
 {
   "name": "circuit-design-harness",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "author": "Circuit Design Harness contributors",
   "description": "An AI-assisted electronics design and physical-build workbench powered by Pi.",
@@ -29,7 +29,8 @@
     "package:mac": "bun run build && MAC_RELEASE_SIGN=1 electron-builder --mac --publish never",
     "package:mac:verify": "bash scripts/verify-macos-gatekeeper.sh \"release/mac-arm64/Circuit Design Harness.app\"",
     "quality": "bun run check && bun run typecheck && bun run test && bun run storage:check && bun run build",
-    "storage:check": "node scripts/check-storage-policy.mjs"
+    "storage:check": "node scripts/check-storage-policy.mjs",
+    "arduino:setup": "bash scripts/setup-arduino-cli.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -116,7 +117,27 @@
         "from": "voice/dist",
         "to": "voice",
         "filter": [
-          "**/*"
+          "**/*",
+          "!**/models/**"
+        ]
+      },
+      {
+        "from": "scripts",
+        "to": "scripts",
+        "filter": [
+          "chatterbox-speak.py",
+          "wakeword-detect.py"
+        ]
+      },
+      {
+        "from": "voice/sources.json",
+        "to": "voice-sources.json"
+      },
+      {
+        "from": "voice/wakeword",
+        "to": "wakeword",
+        "filter": [
+          "hey_eve.onnx"
         ]
       }
     ],

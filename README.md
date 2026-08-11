@@ -1,49 +1,61 @@
 # Circuit Design Harness
 
-Circuit Design Harness is a local-first Electron workbench that keeps a Pi coding-agent conversation, circuit schematic, breadboard assembly, firmware, datasheets, camera evidence, and simulation artifacts together in one user-owned project folder.
+Circuit Design Harness is a local-first Electron workbench that keeps a Pi coding-agent conversation, **lab coach lessons**, circuit schematic, breadboard assembly, firmware, datasheets, camera evidence, and simulation artifacts together in one user-owned project folder.
 
-The application is intended for low-voltage, current-limited prototyping. It helps design and inspect circuits; it is not a certification tool and cannot prove a physical build safe from a camera image or a processor trace.
+The application is intended for low-voltage, current-limited prototyping and **starter-kit learning**. It helps teach, design, and inspect circuits; it is not a certification tool and cannot prove a physical build safe from a camera image or a processor trace.
 
 > [!IMPORTANT]
-> This repository contains a working vertical slice, not a complete SPICE/PCB suite. Pi chat, BYOK/provider login, project persistence, attachments, camera captures, typed circuit edits, breadboard checks, firmware compilation, bounded Uno/ESP32-S3 processor execution, ten built-in IC behavior models, and guarded datasheet-derived model packs are implemented. Uno digital output state can drive explicit circuit-net scenarios, but this is functional event propagation—not electrical co-simulation—and analog/thermal/timing physics remain explicitly limited.
+> **Mode A (default for beginners)** is a lab coach over hand-authored Uno and ESP32-S3 starter lessons (steps, pin maps, common mistakes, camera checklists). Camera checks bind to the active golden step and only describe visible evidence—they never prove hidden connectivity, polarity, voltage, or safety. **Mode B** remains the typed schematic/breadboard CAD sandbox (approval-gated proposals, publication SVG, freeform invent such as Pomodoro). This is not a complete SPICE/PCB suite. Firmware compile and bounded Uno/ESP32-S3 processor execution, ten built-in IC models, and datasheet model packs remain implemented with the same claim limits as before.
 
 ## Status
 
-Last audited: 2026-08-09
+Last audited: 2026-08-11
 
 | Area | Current verified boundary |
 | --- | --- |
-| Desktop UI | Sandboxed Electron + React application with a Beautiful UI–inspired light engineering theme (soft card shadows, accent chips, AI status orb, elevated prompt bar, approval cards), collapsible project sidebar, full-height assistant column, and a right laboratory column split between build camera and schematic/breadboard design; verified in normal-window and 960×640 minimum-window workflows |
-| Pi harness | Pi `AgentSession`, streaming/restoration, provider discovery, Pi-supported API-key/OAuth/custom-provider auth, model selection, image/tool-result input, and purpose-specific design/camera/firmware tools; embedded sessions exclude global extensions/skills/prompt overrides and expose no general shell/file tools |
+| Desktop UI | Sandboxed Electron + React application with a Beautiful UI–inspired light engineering theme (soft card shadows, accent chips, AI status orb, elevated prompt bar, approval cards), collapsible project sidebar, full-height assistant column, and a right laboratory column split between build camera and **Lab coach (default) / schematic / breadboard**; verified in normal-window and 960×640 minimum-window workflows |
+| Lab coach (Mode A) | Six hand-authored starter lessons for Arduino Uno R3 and ESP32-S3 (LED+series resistor, pushbutton, potentiometer, button+active buzzer, HC-SR04); per-project `coach.json` progress; **golden Arduino sketches** per lesson with `apply_lab_lesson_firmware` + optional UI compile via allowlisted [arduino-cli](https://github.com/arduino/arduino-cli); agent tools for list/start/status/explain/advance/firmware; beginner routing prefers golden lessons over freeform invent; camera inspect binds to active step checklist with visible-evidence-only claims |
+| Pi harness | Pi `AgentSession`, streaming/restoration, provider discovery, Pi-supported API-key/OAuth/custom-provider auth, model selection, image/tool-result input, and purpose-specific **lab-coach**/design/camera/firmware tools; embedded sessions exclude global extensions/skills/prompt overrides and expose no general shell/file tools |
 | Project storage | Configurable project root, one project/session/design, atomic versioned JSON, history, deterministic archives, import, and integrity audit |
 | Evidence | Bounded PDF/text/image import, hashing, page-aware text/OCR evidence, attachment UUID/page citations, re-index, viewer, and recoverable deletion |
 | Circuit | Schema-v3 typed components/pins/nets/placements/publication metadata; 44 structural symbol kinds including an official-pinout ESP32-S3-DevKitC-1 v1.1 board; shared conventional-symbol geometry; ERC diagnostics; review-only UI; deterministic page/transparent SVG, BOM, report, and JSON exports; and approval-gated Pi changes |
 | Breadboard | 30-column solderless-board model, intrinsic terminal strips and power rails, component-pin placement, jumpers, physical-short and missing-connectivity diagnostics, review-only UI, and approval-gated Pi placement/jumper proposals |
-| Camera/voice | Local camera, encrypted token-scoped LAN WebSocket phone relay with QR pairing, legacy private-LAN JPEG input, opt-in “Eve”/“Hey Eve”, local multilingual Whisper STT, revision-linked camera tool capture, and tone-shaped installed local-system TTS |
+| Camera/voice | Local camera, encrypted token-scoped LAN WebSocket phone relay with QR pairing, legacy private-LAN JPEG input, opt-in “Eve”/“Hey Eve” via **LiveKit wakeword** ONNX (continuous local detection; Whisper only for the command after wake), local multilingual Whisper STT (model downloaded on first start, hash-verified), revision-linked camera tool capture, and tone-shaped **Chatterbox** (Resemble AI Nano) local TTS that speaks a **summary** of assistant replies (not the full technical message; full text stays on screen). Large Whisper/Chatterbox weights are not installer-packaged |
 | Arduino Uno | Allowlisted Arduino CLI compile plus deterministic virtual-time `simavr` execution, versioned GPIO/UART traces, explicit pin-to-net bridges, and circuit assertions |
 | ESP32-S3 | Allowlisted Arduino/ESPHome compile plus bounded local Espressif QEMU `esp32s3` CPU/UART-console execution; GPIO/circuit bridging is explicitly unsupported because the pinned GPIO device is a stub |
 | Other ESP32 boards | Retained in the official ESPHome reference catalog; clearly reported as not executable by this product |
 | ESPHome | Pinned official catalog snapshot: 738 components and 298 ESP32 boards, search, official docs/source links, structural validation, safe native validation, compile, and artifact recording |
 | Built-in ICs | Ten manufacturer-sourced pin maps and deterministic functional adapters, approval-gated Pi placement, net propagation, state/edge steps, driver-conflict diagnostics, and scenario assertions; mixed-signal models are explicitly idealized |
 | Datasheet model packs | Pi-readable strict JSON contract, attachment/page provenance, explicit UI approval, hashing, monotonic revisions, preserved history, and fixed declarative runtimes for truth tables, analog curves, I²C registers, and SPI command recognition |
-| Packaging | Hash-verified macOS arm64 simulator and Whisper sidecars; local `package:dir` remains ad-hoc; `package:mac` signs with Developer ID + hardened runtime and notarizes via notarytool when Apple credentials are present; a Developer ID + notarized arm64 ZIP for v0.1.0 was accepted by Apple notary (`Ready for distribution`) with nested simulators/voice Mach-O in the ticket; local `spctl`/`stapler` on this agent host hit a Launch Services subsystem error (even for Calculator.app), so clean-Mac Gatekeeper open remains a manual confirm; Windows/Linux sidecars remain release work |
+| Packaging | Hash-verified macOS arm64 simulator sidecars and small Whisper `whisper-cli` runtime; large Whisper/Chatterbox model weights download into userData on first start (not required in the DMG/ZIP); local `package:dir` remains ad-hoc; `package:mac` signs with Developer ID + hardened runtime and notarizes via notarytool when Apple credentials are present; a Developer ID + notarized arm64 ZIP for v0.1.0 was accepted by Apple notary (`Ready for distribution`) with nested simulators/voice Mach-O in the ticket; local `spctl`/`stapler` on this agent host hit a Launch Services subsystem error (even for Calculator.app), so clean-Mac Gatekeeper open remains a manual confirm; Windows/Linux sidecars remain release work |
 | Storage discipline | No persistent diagnostic logs by default; app-owned logs are pruned oldest-first to an aggregate 100 MiB ceiling at startup, native output is bounded/truncated, and native source/toolchain build directories are unique temporary inputs removed on success or failure |
 
 The authoritative step-by-step ledger is [TASKS.md](./TASKS.md). Durable contributor rules are in [AGENTS.md](./AGENTS.md).
 
 ## Product loop
 
-1. Choose a project root and create a project.
+### Mode A — lab coach (beginner default)
+
+1. Choose a project root and create a project; open the **Lab coach** tab (default laboratory view).
 2. Configure any provider/auth method exposed by Pi and select a model.
-3. Attach requirements, schematics, PDFs, and component datasheets.
-4. Ask Pi to inspect the 44-kind component catalog, create or revise the circuit, name nets, set paper metadata, or propose a clean publication layout.
-5. Review the semantic diff and explicitly approve or reject it.
-6. Place the logical parts and jumpers on the breadboard view.
-7. Ask Pi to read, author, and compile Arduino or ESPHome firmware for Uno or ESP32-S3 through its constrained project tools.
-8. Ask Pi to run the bounded local processor simulator and read its separate CPU/GPIO/UART/circuit-assertion coverage report. On Uno, optionally map observed output pins into circuit nets.
-9. Use a built-in IC adapter, or ask Pi to propose a cited declarative model from an attachment and explicitly install it.
-10. Start a local camera or scan the temporary LAN pairing QR. Say or type “Eve, take a look”; the camera tool saves the current frame with revision provenance and returns that image to the same Pi turn for comparison with the canonical circuit/assembly state.
-11. Iterate while the project retains conversation, evidence, design revisions, firmware, captures, and model history.
+3. Start a golden lesson for Uno or ESP32-S3 (or ask in chat: “wire an LED on Uno”, “ESP32 button and buzzer”, …).
+4. Follow the ordered physical steps: instruction, why, pin map, common mistakes.
+5. Start the build camera; say or type “check my build” / “take a look” while a step is active—the coach path compares the frame to **that step’s checklist**, not a newly invented circuit.
+6. Advance steps when ready. When wiring is complete, use **Load golden sketch + compile** (or ask Eve)—hand-authored `.ino` for that lesson runs through `arduino-cli` (install once with `bun run arduino:setup`). Focus on whether the **bench matches the success check**; do not write code for covered lessons.
+7. Camera still cannot prove continuity or safety. Optionally open Schematic/Breadboard (Mode B) for advanced CAD later.
+
+Arduino CLI setup: [docs/lab-coach-arduino-cli.md](./docs/lab-coach-arduino-cli.md).
+
+### Mode B — sandbox CAD (secondary)
+
+1. Attach requirements, schematics, PDFs, and component datasheets.
+2. Ask Pi to inspect the 44-kind component catalog, create or revise the circuit, name nets, set paper metadata, or propose a clean publication layout.
+3. Review the semantic diff and explicitly approve or reject it.
+4. Place the logical parts and jumpers on the breadboard view.
+5. Ask Pi to read, author, and compile Arduino or ESPHome firmware for Uno or ESP32-S3 through its constrained project tools.
+6. Ask Pi to run the bounded local processor simulator and read its separate coverage report. On Uno, optionally map observed output pins into circuit nets.
+7. Use a built-in IC adapter, or ask Pi to propose a cited declarative model from an attachment and explicitly install it.
+8. Iterate while the project retains conversation, evidence, design revisions, firmware, captures, coach progress, and model history.
 
 ## Interface
 
@@ -51,9 +63,9 @@ The UI has three primary regions and uses a light engineering theme adapted from
 
 - A collapsible project/chat sidebar built from shadcn-style primitives.
 - A full-height central conversation pane with agent-status orb, stream-style message bubbles, elevated prompt composer, attachments, Eve/push-to-talk controls, model/provider controls, and human-in-the-loop approval cards.
-- A wider right laboratory column with build camera above the schematic/breadboard design surface (segmented view switch). The split and the assistant/laboratory boundary are resizable.
+- A wider right laboratory column with build camera above the **Lab coach / schematic / breadboard** design surface (segmented view switch; Lab coach is the default). The split and the assistant/laboratory boundary are resizable.
 
-Firmware and processor simulation deliberately have no manual dashboard: Pi uses narrow read/compile/run tools as its engineering playground and reports their exact validation boundary in chat. Schematic and breadboard surfaces are review-only. The renderer preload exposes proposal approval/rejection but no direct circuit/assembly mutation methods; Pi stages typed circuit or breadboard proposals until the user explicitly approves them.
+Firmware and processor simulation deliberately have no manual dashboard: Pi uses narrow read/compile/run tools as its engineering playground and reports their exact validation boundary in chat. Lab coach teaches golden lessons; schematic and breadboard surfaces are review-only sandbox CAD. The renderer preload exposes coach progress controls and proposal approval/rejection but no direct circuit/assembly mutation methods; Pi stages typed circuit or breadboard proposals until the user explicitly approves them.
 
 The schematic deliberately resembles conventional paper figures rather than generic node boxes: dark orthogonal wires, junction dots, ANSI-style resistor zigzags, capacitor plates, diode/LED arrows, transistor/gate/source/ground symbols, horizontal labels, and restrained semantic color. Onscreen and exported drawings use the same deterministic geometry engine so the paper artifact cannot silently diverge from the canonical view.
 

@@ -31,6 +31,16 @@ import type {
   RunCircuitModelScenarioInput,
   RunCircuitModelScenarioResult,
 } from "./circuit-simulation-contract";
+import type {
+  AdvanceCoachLessonInput,
+  ApplyCoachFirmwareInput,
+  ApplyCoachFirmwareResult,
+  ClearCoachLessonInput,
+  CoachFirmwarePreview,
+  CoachSnapshot,
+  GoToCoachStepInput,
+  StartCoachLessonInput,
+} from "./coach-contract";
 import type { EmbeddedCatalogSnapshot } from "./embedded-contract";
 import type { CircuitExportResult, ProjectArchiveResult } from "./export-contract";
 import type {
@@ -54,9 +64,17 @@ import type {
   InstallSimulationModelInput,
   SimulationModelSnapshot,
 } from "./simulation-model-contract";
-import type { TranscribeAudioInput, TranscriptionResult } from "./voice-contract";
+import type {
+  PushWakeWordAudioInput,
+  SpeakTextInput,
+  SpeakTextResult,
+  TranscribeAudioInput,
+  TranscriptionResult,
+  VoiceAssetStatus,
+  WakeWordDetectionEvent,
+} from "./voice-contract";
 
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION = "0.2.0";
 
 export type AppPlatform =
   | "aix"
@@ -100,6 +118,13 @@ export interface CircuitHarnessApi {
   renameProject(input: RenameProjectInput): Promise<ProjectState>;
   verifyProjectIntegrity(projectId: string): Promise<ProjectIntegrityReport>;
   getAssembly(projectId: string): Promise<AssemblySnapshot>;
+  getCoach(projectId: string): Promise<CoachSnapshot>;
+  startCoachLesson(input: StartCoachLessonInput): Promise<CoachSnapshot>;
+  advanceCoachLesson(input: AdvanceCoachLessonInput): Promise<CoachSnapshot>;
+  goToCoachStep(input: GoToCoachStepInput): Promise<CoachSnapshot>;
+  clearCoachLesson(input: ClearCoachLessonInput): Promise<CoachSnapshot>;
+  getCoachLessonFirmware(lessonId: string): Promise<CoachFirmwarePreview | undefined>;
+  applyCoachLessonFirmware(input: ApplyCoachFirmwareInput): Promise<ApplyCoachFirmwareResult>;
   getAgentSnapshot(): Promise<AgentSnapshot>;
   sendAgentMessage(input: SendAgentMessageInput): Promise<void>;
   abortAgent(projectId: string): Promise<void>;
@@ -135,6 +160,15 @@ export interface CircuitHarnessApi {
   authorizeMicrophone(): Promise<void>;
   transcribeAudio(input: TranscribeAudioInput): Promise<TranscriptionResult>;
   cancelTranscription(projectId: string): Promise<void>;
+  getVoiceAssetStatus(): Promise<VoiceAssetStatus>;
+  ensureVoiceAssets(): Promise<VoiceAssetStatus>;
+  speakText(input: SpeakTextInput): Promise<SpeakTextResult>;
+  cancelSpeech(): Promise<void>;
+  onVoiceAssetStatus(listener: (status: VoiceAssetStatus) => void): () => void;
+  startWakeWord(): Promise<void>;
+  stopWakeWord(): Promise<void>;
+  pushWakeWordAudio(input: PushWakeWordAudioInput): Promise<void>;
+  onWakeWordDetection(listener: (event: WakeWordDetectionEvent) => void): () => void;
   saveCameraCapture(input: SaveCameraCaptureInput): Promise<ProjectCapture>;
   getCaptures(projectId: string): Promise<readonly ProjectCapture[]>;
   exportCircuit(projectId: string): Promise<CircuitExportResult>;

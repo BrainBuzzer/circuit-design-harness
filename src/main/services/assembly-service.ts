@@ -13,6 +13,7 @@ import {
   migrateAssemblyDocument,
   validateAssembly,
 } from "@domain/assembly";
+import type { CircuitDocument } from "@domain/circuit";
 import type { AssemblyEvent, AssemblySnapshot } from "@shared/assembly-contract";
 import type { CircuitService } from "./circuit-service";
 import { writeJsonAtomic } from "./json-file";
@@ -101,25 +102,29 @@ export class AssemblyService {
     rationale: string,
     operations: readonly AssemblyOperation[],
   ): Promise<AssemblyProposal> {
-    const [assembly, circuit] = await Promise.all([
-      this.getSnapshot(projectId),
-      this.circuits.getSnapshot(projectId),
-    ]);
-    applyAssemblyOperations(assembly.document, circuit.document, operations);
-    const proposal = AssemblyProposalSchema.parse({
-      schemaVersion: 1,
-      id: randomUUID(),
-      projectId,
-      baseRevision: assembly.document.revision,
-      circuitRevision: circuit.document.revision,
-      rationale,
-      operations,
-      semanticDiff: operations.map(describeAssemblyOperation),
-      status: "pending",
-      createdAt: new Date().toISOString(),
+    return this.withProjectWrite(projectId, async () => {
+      const [assemblyDocument, circuit] = await Promise.all([
+        this.readAndMigrate(projectId),
+        this.circuits.getSnapshot(projectId),
+      ]);
+      applyAssemblyOperations(assemblyDocument, circuit.document, operations);
+      const proposal = AssemblyProposalSchema.parse({
+        schemaVersion: 1,
+        id: randomUUID(),
+        projectId,
+        baseRevision: assemblyDocument.revision,
+        circuitRevision: circuit.document.revision,
+        rationale,
+        operations,
+        semanticDiff: operations.map((operation) =>
+          describeAssemblyOperation(operation, circuit.document),
+        ),
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      });
+      await writeJsonAtomic(await this.proposalPath(projectId, proposal.id), proposal);
+      return proposal;
     });
-    await writeJsonAtomic(await this.proposalPath(projectId, proposal.id), proposal);
-    return proposal;
   }
 
   async listPendingProposals(projectId: string): Promise<readonly AssemblyProposal[]> {
@@ -230,12 +235,20 @@ export class AssemblyService {
   }
 }
 
-function describeAssemblyOperation(operation: AssemblyOperation): string {
+function describeAssemblyOperation(operation: AssemblyOperation, circuit: CircuitDocument): string {
   switch (operation.type) {
-    case "place_component_pin":
-      return `Place pin ${operation.pinId} in ${operation.hole}.`;
-    case "remove_component_placement":
-      return "Remove a component placement from the breadboard.";
+    case "place_component_pin": {
+      const reference =
+        circuit.components.find((component) => component.id === operation.componentId)?.reference ??
+        "component";
+      return `Place ${reference} pin ${operation.pinId} in hole ${operation.hole}.`;
+    }
+    case "remove_component_placement": {
+      const reference =
+        circuit.components.find((component) => component.id === operation.componentId)?.reference ??
+        "component";
+      return `Remove ${reference} from the breadboard.`;
+    }
     case "add_jumper":
       return `Add a ${operation.color} jumper from ${operation.from} to ${operation.to}.`;
     case "remove_jumper":

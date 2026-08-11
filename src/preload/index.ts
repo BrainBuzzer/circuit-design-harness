@@ -23,6 +23,13 @@ const api: CircuitHarnessApi = {
   renameProject: (input) => ipcRenderer.invoke("project:rename", input),
   verifyProjectIntegrity: (projectId) => ipcRenderer.invoke("project:verify-integrity", projectId),
   getAssembly: (projectId) => ipcRenderer.invoke("assembly:get", projectId),
+  getCoach: (projectId) => ipcRenderer.invoke("coach:get", projectId),
+  startCoachLesson: (input) => ipcRenderer.invoke("coach:start-lesson", input),
+  advanceCoachLesson: (input) => ipcRenderer.invoke("coach:advance", input),
+  goToCoachStep: (input) => ipcRenderer.invoke("coach:go-to-step", input),
+  clearCoachLesson: (input) => ipcRenderer.invoke("coach:clear", input),
+  getCoachLessonFirmware: (lessonId) => ipcRenderer.invoke("coach:get-firmware", lessonId),
+  applyCoachLessonFirmware: (input) => ipcRenderer.invoke("coach:apply-firmware", input),
   getAgentSnapshot: () => ipcRenderer.invoke("agent:get-snapshot"),
   sendAgentMessage: (input) => ipcRenderer.invoke("agent:send-message", input),
   abortAgent: (projectId) => ipcRenderer.invoke("agent:abort", projectId),
@@ -58,6 +65,33 @@ const api: CircuitHarnessApi = {
   authorizeMicrophone: () => ipcRenderer.invoke("media:authorize-microphone"),
   transcribeAudio: (input) => ipcRenderer.invoke("voice:transcribe", input),
   cancelTranscription: (projectId) => ipcRenderer.invoke("voice:cancel-transcription", projectId),
+  getVoiceAssetStatus: () => ipcRenderer.invoke("voice:asset-status"),
+  ensureVoiceAssets: () => ipcRenderer.invoke("voice:ensure-assets"),
+  speakText: (input) => ipcRenderer.invoke("voice:speak", input),
+  cancelSpeech: () => ipcRenderer.invoke("voice:cancel-speech"),
+  onVoiceAssetStatus: (listener) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: Parameters<typeof listener>[0],
+    ) => {
+      listener(payload);
+    };
+    ipcRenderer.on("voice:asset-status", handler);
+    return () => ipcRenderer.removeListener("voice:asset-status", handler);
+  },
+  startWakeWord: () => ipcRenderer.invoke("wake:start"),
+  stopWakeWord: () => ipcRenderer.invoke("wake:stop"),
+  pushWakeWordAudio: (input) => ipcRenderer.invoke("wake:push-audio", input),
+  onWakeWordDetection: (listener) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: Parameters<typeof listener>[0],
+    ) => {
+      listener(payload);
+    };
+    ipcRenderer.on("wake:detection", handler);
+    return () => ipcRenderer.removeListener("wake:detection", handler);
+  },
   saveCameraCapture: (input) => ipcRenderer.invoke("capture:save", input),
   getCaptures: (projectId) => ipcRenderer.invoke("capture:list", projectId),
   exportCircuit: (projectId) => ipcRenderer.invoke("export:circuit", projectId),

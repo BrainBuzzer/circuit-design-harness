@@ -55,7 +55,7 @@ export class TranscriptionService {
       const runtime = await this.resolveRuntime();
       if (!runtime) {
         throw new Error(
-          "The verified local Whisper runtime is unavailable. Rebuild or reinstall the app voice bundle.",
+          "The verified local Whisper runtime is unavailable. Voice assets are still downloading or failed verification — wait for first-start download readiness, then try again.",
         );
       }
       const audioPath = path.join(temporaryDirectory, "voice-input.wav");

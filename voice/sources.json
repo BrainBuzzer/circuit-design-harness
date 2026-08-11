@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "engine": {
     "id": "whisper.cpp",
     "repository": "https://github.com/ggml-org/whisper.cpp.git",
@@ -8,9 +8,92 @@
   },
   "model": {
     "id": "whisper-small-multilingual-q5_1",
+    "relativePath": "models/ggml-small-q5_1.bin",
     "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
     "byteSize": 190085487,
     "sha256": "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
     "license": "MIT"
+  },
+  "tts": {
+    "id": "chatterbox-nano-v1",
+    "engine": "chatterbox",
+    "variant": "nano",
+    "license": "MIT",
+    "repository": "https://github.com/resemble-ai/chatterbox",
+    "modelRepo": "https://huggingface.co/ResembleAI/chatterbox-nano",
+    "sampleRateHz": 24000,
+    "files": [
+      {
+        "relativePath": "ve.safetensors",
+        "url": "https://huggingface.co/ResembleAI/chatterbox-nano/resolve/main/ve.safetensors",
+        "byteSize": 5695784,
+        "sha256": "f0921cab452fa278bc25cd23ffd59d36f816d7dc5181dd1bef9751a7fb61f63c"
+      },
+      {
+        "relativePath": "t3_nano_v1.safetensors",
+        "url": "https://huggingface.co/ResembleAI/chatterbox-nano/resolve/main/t3_nano_v1.safetensors",
+        "byteSize": 869899204,
+        "sha256": "72b110185087d945dbdf54dee4e333848e1811bdd5fd6cb16ceb8da50006f0c9"
+      },
+      {
+        "relativePath": "s3gen_meanflow.safetensors",
+        "url": "https://huggingface.co/ResembleAI/chatterbox-nano/resolve/main/s3gen_meanflow.safetensors",
+        "byteSize": 1064875036,
+        "sha256": "d65cb687a2ed581ee6cc297e919ffefa63386944f42364ae13b78a594945514f"
+      },
+      {
+        "relativePath": "conds.pt",
+        "url": "https://huggingface.co/ResembleAI/chatterbox-nano/resolve/main/conds.pt",
+        "byteSize": 169454,
+        "sha256": "b1852099306fd6a7814eb9d0bd10186caba7249596cc23868f78a0eefbfa5033"
+      },
+      {
+        "relativePath": "vocab.json",
+        "url": "https://huggingface.co/ResembleAI/chatterbox-nano/resolve/main/vocab.json",
+        "byteSize": 999186,
+        "sha256": "f6bd25a65e4e63ca31360e9fb11c7e4f9a391a78385d640acd814092dd6eee4f"
+      },
+      {
+        "relativePath": "merges.txt",
+        "url": "https://huggingface.co/ResembleAI/chatterbox-nano/resolve/main/merges.txt",
+        "byteSize": 456318,
+        "sha256": "1ce1664773c50f3e0cc8842619a93edc4624525b728b188a9e0be33b7726adc5"
+      },
+      {
+        "relativePath": "tokenizer_config.json",
+        "url": "https://huggingface.co/ResembleAI/chatterbox-nano/resolve/main/tokenizer_config.json",
+        "byteSize": 3878,
+        "sha256": "bca16a2ac1ddbd78b8d6228f0031884cc74b6ea54b967d6f6d2ebae9ccde23e6"
+      },
+      {
+        "relativePath": "special_tokens_map.json",
+        "url": "https://huggingface.co/ResembleAI/chatterbox-nano/resolve/main/special_tokens_map.json",
+        "byteSize": 470,
+        "sha256": "92ba8063bf40aa163eadebbfe0de07c2aebe44cf0d4a9e8726580b0781fd2640"
+      },
+      {
+        "relativePath": "added_tokens.json",
+        "url": "https://huggingface.co/ResembleAI/chatterbox-nano/resolve/main/added_tokens.json",
+        "byteSize": 418,
+        "sha256": "72e4ab6acb0d9309ac3df4b526ae5fd80a2da5bc5ab7bb02d85096a374f69193"
+      }
+    ]
+  },
+  "wakeword": {
+    "id": "hey_eve",
+    "engine": "livekit-wakeword",
+    "repository": "https://github.com/livekit/livekit-wakeword",
+    "threshold": 0.5,
+    "sampleRateHz": 16000,
+    "windowSamples": 32000,
+    "hopSamples": 1280,
+    "files": [
+      {
+        "relativePath": "hey_eve.onnx",
+        "url": "https://github.com/livekit/livekit-wakeword/releases/download/v0.1.0/hey_eve.onnx",
+        "byteSize": 6410,
+        "sha256": "6c1dbbfcc04b9ec42b9897392dbf1fb18d8f9e0b0902c5645a500cea235831af"
+      }
+    ]
   }
 }

@@ -1,0 +1,17 @@
+# Train a production hey_eve classifier with livekit-wakeword:
+#   pip install 'livekit-wakeword[train,eval,export]'
+#   livekit-wakeword setup --config voice/wakeword/hey_eve.yaml
+#   livekit-wakeword run voice/wakeword/hey_eve.yaml
+# Replace voice/wakeword/hey_eve.onnx with the exported model and update
+# voice/sources.json size/sha256 pins before release.
+
+model_name: hey_eve
+target_phrases:
+  - "hey eve"
+  - "eve"
+n_samples: 10000
+model:
+  model_type: conv_attention
+  model_size: small
+steps: 50000
+target_fp_per_hour: 0.2

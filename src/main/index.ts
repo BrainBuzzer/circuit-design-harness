@@ -1,3 +1,4 @@
+import { access } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { CircuitModelScenarioSchema } from "@domain/circuit-simulation";
@@ -28,6 +29,7 @@ import { AttachmentService } from "./services/attachment-service";
 import { CameraEvidenceService } from "./services/camera-evidence-service";
 import { CaptureService } from "./services/capture-service";
 import { CircuitService } from "./services/circuit-service";
+import { CoachService } from "./services/coach-service";
 import { EmbeddedCatalogService } from "./services/embedded-catalog-service";
 import { ExportService } from "./services/export-service";
 import { FirmwareService } from "./services/firmware-service";
@@ -41,6 +43,9 @@ import { ProjectService } from "./services/project-service";
 import { RemoteCameraService } from "./services/remote-camera-service";
 import { SimulationModelService } from "./services/simulation-model-service";
 import { TranscriptionService } from "./services/transcription-service";
+import { TtsService } from "./services/tts-service";
+import { loadVoiceSources, VoiceAssetService } from "./services/voice-asset-service";
+import { WakeWordService } from "./services/wake-word-service";
 
 const APP_SCHEME = "circuit-harness";
 const APP_HOST = "app";
@@ -206,6 +211,7 @@ function registerIpcHandlers(
   piService: PiService,
   circuitService: CircuitService,
   assemblyService: AssemblyService,
+  coachService: CoachService,
   embeddedCatalogService: EmbeddedCatalogService,
   firmwareService: FirmwareService,
   simulationModelService: SimulationModelService,
@@ -219,6 +225,9 @@ function registerIpcHandlers(
   remoteCameraService: RemoteCameraService,
   transcriptionService: TranscriptionService,
   preferencesService: PreferencesService,
+  voiceAssetService: VoiceAssetService,
+  ttsService: TtsService,
+  wakeWordService: WakeWordService,
 ): void {
   ipcMain.handle("app:get-info", (event): AppInfo => {
     assertTrustedIpc(event);
@@ -563,6 +572,49 @@ function registerIpcHandlers(
     assertTrustedIpc(event);
     return assemblyService.getSnapshot(ProjectIdSchema.parse(projectId));
   });
+  ipcMain.handle("coach:get", (event, projectId: unknown) => {
+    assertTrustedIpc(event);
+    return coachService.getSnapshot(ProjectIdSchema.parse(projectId));
+  });
+  ipcMain.handle("coach:start-lesson", (event, input: unknown) => {
+    assertTrustedIpc(event);
+    const parsed = z
+      .object({ projectId: z.uuid(), lessonId: z.string().trim().min(1).max(60) })
+      .parse(input);
+    return coachService.startLesson(parsed.projectId, parsed.lessonId);
+  });
+  ipcMain.handle("coach:advance", (event, input: unknown) => {
+    assertTrustedIpc(event);
+    const parsed = z.object({ projectId: z.uuid() }).parse(input);
+    return coachService.advance(parsed.projectId);
+  });
+  ipcMain.handle("coach:go-to-step", (event, input: unknown) => {
+    assertTrustedIpc(event);
+    const parsed = z
+      .object({ projectId: z.uuid(), stepIndex: z.int().nonnegative().max(100) })
+      .parse(input);
+    return coachService.goToStep(parsed.projectId, parsed.stepIndex);
+  });
+  ipcMain.handle("coach:clear", (event, input: unknown) => {
+    assertTrustedIpc(event);
+    const parsed = z.object({ projectId: z.uuid() }).parse(input);
+    return coachService.clear(parsed.projectId);
+  });
+  ipcMain.handle("coach:get-firmware", (event, lessonId: unknown) => {
+    assertTrustedIpc(event);
+    const id = z.string().trim().min(1).max(60).parse(lessonId);
+    return coachService.getLessonFirmwareSummary(id);
+  });
+  ipcMain.handle("coach:apply-firmware", (event, input: unknown) => {
+    assertTrustedIpc(event);
+    const parsed = z
+      .object({
+        projectId: z.uuid(),
+        lessonId: z.string().trim().min(1).max(60).optional(),
+      })
+      .parse(input);
+    return coachService.applyLessonFirmware(parsed.projectId, parsed.lessonId);
+  });
 
   ipcMain.handle("attachment:list", (event, projectId: unknown) => {
     assertTrustedIpc(event);
@@ -691,6 +743,61 @@ function registerIpcHandlers(
     transcriptionService.cancel(ProjectIdSchema.parse(projectId));
   });
 
+  ipcMain.handle("voice:asset-status", (event) => {
+    assertTrustedIpc(event);
+    return voiceAssetService.getStatus();
+  });
+
+  ipcMain.handle("voice:ensure-assets", async (event) => {
+    assertTrustedIpc(event);
+    await voiceAssetService.ensureAssets();
+    return voiceAssetService.getStatus();
+  });
+
+  ipcMain.handle("voice:speak", (event, input: unknown) => {
+    assertTrustedIpc(event);
+    const parsed = z
+      .object({
+        text: z.string().trim().min(1).max(500),
+        exaggeration: z.number().finite().min(0).max(1).optional(),
+      })
+      .parse(input);
+    return ttsService.speak({
+      text: parsed.text,
+      ...(parsed.exaggeration !== undefined ? { exaggeration: parsed.exaggeration } : {}),
+    });
+  });
+
+  ipcMain.handle("voice:cancel-speech", (event) => {
+    assertTrustedIpc(event);
+    ttsService.cancel();
+  });
+
+  ipcMain.handle("wake:start", async (event) => {
+    assertTrustedIpc(event);
+    await wakeWordService.start();
+  });
+
+  ipcMain.handle("wake:stop", (event) => {
+    assertTrustedIpc(event);
+    wakeWordService.stop();
+  });
+
+  ipcMain.handle("wake:push-audio", async (event, input: unknown) => {
+    assertTrustedIpc(event);
+    const parsed = z
+      .object({
+        pcm16: z.union([
+          z.instanceof(Int16Array),
+          z.array(z.number().int().min(-32_768).max(32_767)).max(64_000),
+        ]),
+      })
+      .parse(input);
+    const samples =
+      parsed.pcm16 instanceof Int16Array ? parsed.pcm16 : Int16Array.from(parsed.pcm16);
+    await wakeWordService.pushPcm16(samples);
+  });
+
   ipcMain.handle("capture:save", (event, input: unknown) => {
     assertTrustedIpc(event);
     return captureService.save(SaveCameraCaptureSchema.parse(input));
@@ -751,6 +858,9 @@ function createMainWindow(): BrowserWindow {
 
 let activePiService: PiService | undefined;
 let activeTranscriptionService: TranscriptionService | undefined;
+let activeTtsService: TtsService | undefined;
+let activeVoiceAssetService: VoiceAssetService | undefined;
+let activeWakeWordService: WakeWordService | undefined;
 let activeLanCameraRelayService: LanCameraRelayService | undefined;
 
 async function startApplication(): Promise<void> {
@@ -786,10 +896,11 @@ async function startApplication(): Promise<void> {
   const assemblyService = new AssemblyService(projectService, circuitService, (event) => {
     broadcast("assembly:event", event);
   });
+  const repositoryRoot = path.resolve(import.meta.dirname, "../..");
   const localSimulatorService = new LocalSimulatorService(
     app.isPackaged,
     process.resourcesPath,
-    path.resolve(import.meta.dirname, "../.."),
+    repositoryRoot,
   );
   const resolveLocalExecutable = (name: string) => localSimulatorService.resolveExecutable(name);
   const embeddedCatalogService = new EmbeddedCatalogService(resolveLocalExecutable);
@@ -800,6 +911,7 @@ async function startApplication(): Promise<void> {
   const cameraEvidenceService = new CameraEvidenceService(captureService);
   const lanCameraRelayService = new LanCameraRelayService(cameraEvidenceService);
   activeLanCameraRelayService = lanCameraRelayService;
+  const coachService = new CoachService(projectService, firmwareService);
   const exportService = new ExportService(projectService, circuitService);
   const archiveService = new ArchiveService(projectService);
   const integrityService = new ProjectIntegrityService(projectService);
@@ -817,16 +929,65 @@ async function startApplication(): Promise<void> {
     captureService,
     cameraEvidenceService,
     () => preferencesService.get(),
+    coachService,
   );
   activePiService = piService;
-  const transcriptionService = new TranscriptionService(
-    async () => {
-      const [executablePath, modelPath] = await Promise.all([
-        localSimulatorService.resolveVoiceAsset("bin/whisper-cli"),
-        localSimulatorService.resolveVoiceAsset("models/ggml-small-q5_1.bin"),
-      ]);
-      return executablePath && modelPath ? { executablePath, modelPath } : undefined;
+  const voiceSourcesPath = app.isPackaged
+    ? path.join(process.resourcesPath, "voice-sources.json")
+    : path.join(repositoryRoot, "voice", "sources.json");
+  const voiceSources = await loadVoiceSources(voiceSourcesPath);
+  const voiceAssetService = new VoiceAssetService({
+    assetsRoot: path.join(app.getPath("userData"), "voice-assets"),
+    sources: voiceSources,
+    resolveWhisperExecutable: () => localSimulatorService.resolveVoiceAsset("bin/whisper-cli"),
+    resolvePackagedWhisperModel: () =>
+      localSimulatorService.resolveVoiceAsset("models/ggml-small-q5_1.bin"),
+    resolvePackagedWakewordModel: async () => {
+      const candidate = app.isPackaged
+        ? path.join(process.resourcesPath, "wakeword", "hey_eve.onnx")
+        : path.join(repositoryRoot, "voice", "wakeword", "hey_eve.onnx");
+      try {
+        await access(candidate);
+        return candidate;
+      } catch {
+        return undefined;
+      }
     },
+    onStatus: (status) => {
+      broadcast("voice:asset-status", status);
+    },
+  });
+  activeVoiceAssetService = voiceAssetService;
+  const chatterboxSidecarPath = app.isPackaged
+    ? path.join(process.resourcesPath, "scripts", "chatterbox-speak.py")
+    : path.join(repositoryRoot, "scripts", "chatterbox-speak.py");
+  const ttsService = new TtsService(
+    () => voiceAssetService.resolveChatterboxModel(),
+    chatterboxSidecarPath,
+    "python3",
+    undefined,
+    voiceSources.tts?.id ?? "chatterbox-nano-v1",
+  );
+  activeTtsService = ttsService;
+  const wakewordSidecarPath = app.isPackaged
+    ? path.join(process.resourcesPath, "scripts", "wakeword-detect.py")
+    : path.join(repositoryRoot, "scripts", "wakeword-detect.py");
+  const wakeWordService = new WakeWordService(
+    () => voiceAssetService.resolveWakeWordModel(),
+    wakewordSidecarPath,
+    "python3",
+    (event) => {
+      if (event.type === "detection") {
+        broadcast("wake:detection", {
+          name: event.name,
+          confidence: event.confidence,
+        });
+      }
+    },
+  );
+  activeWakeWordService = wakeWordService;
+  const transcriptionService = new TranscriptionService(
+    async () => voiceAssetService.resolveWhisperRuntime(),
     (projectId) => piService.isProjectActive(projectId),
   );
   activeTranscriptionService = transcriptionService;
@@ -835,6 +996,7 @@ async function startApplication(): Promise<void> {
     piService,
     circuitService,
     assemblyService,
+    coachService,
     embeddedCatalogService,
     firmwareService,
     simulationModelService,
@@ -848,7 +1010,12 @@ async function startApplication(): Promise<void> {
     remoteCameraService,
     transcriptionService,
     preferencesService,
+    voiceAssetService,
+    ttsService,
+    wakeWordService,
   );
+  // First-start (and subsequent) model download — models are not installer-packaged.
+  void voiceAssetService.ensureAssets().catch(() => undefined);
 
   if (projectState.activeProjectId) {
     const projectDirectory = await projectService.getProjectDirectory(projectState.activeProjectId);
@@ -872,6 +1039,9 @@ void app
 
 app.on("before-quit", () => {
   activeTranscriptionService?.dispose();
+  activeTtsService?.dispose();
+  activeWakeWordService?.dispose();
+  activeVoiceAssetService?.dispose();
   activePiService?.dispose();
   void activeLanCameraRelayService?.stop();
 });

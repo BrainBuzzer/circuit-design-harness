@@ -1,6 +1,7 @@
 import type { AssemblyProposal } from "@domain/assembly";
 import type { CircuitOperation, CircuitProposal } from "@domain/circuit";
 import type { AppPreferences } from "@domain/preferences";
+import { prepareSpokenReply } from "@domain/speech-summary";
 import type { AgentEvent, AgentSnapshot } from "@shared/agent-contract";
 import type { AssemblySnapshot } from "@shared/assembly-contract";
 import type { ProjectAttachment, ProjectTrashedAttachment } from "@shared/attachment-contract";
@@ -8,6 +9,7 @@ import type { LanCameraRelayStatus, ProjectCapture } from "@shared/capture-contr
 import type { CircuitSnapshot } from "@shared/circuit-contract";
 import type { CircuitExportResult, ProjectArchiveResult } from "@shared/export-contract";
 import type { ProjectSummary } from "@shared/project-contract";
+import type { VoiceAssetStatus } from "@shared/voice-contract";
 import {
   CameraIcon,
   CheckIcon,
@@ -33,6 +35,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/chat-types";
 import { BreadboardEditor } from "@/components/breadboard-editor";
 import { CircuitEditor } from "@/components/circuit-editor";
+import { LabCoachPanel } from "@/components/lab-coach-panel";
 import { ProviderSettingsDialog } from "@/components/provider-settings-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -139,7 +142,8 @@ export function Workbench({
   onExportProjectArchive,
   onUpdatePreferences,
 }: WorkbenchProps): React.JSX.Element {
-  const [designView, setDesignView] = useState<"schematic" | "breadboard">("schematic");
+  const [designView, setDesignView] = useState<"lab" | "schematic" | "breadboard">("lab");
+  const [composerSeed, setComposerSeed] = useState<string>();
   if (!activeProject) {
     return (
       <Empty className="min-h-0 border-0">
@@ -181,6 +185,8 @@ export function Workbench({
             error={error}
             messages={messages}
             preferences={preferences}
+            composerSeed={composerSeed}
+            onComposerSeedConsumed={() => setComposerSeed(undefined)}
             onAbort={onAbort}
             onApproveCircuitProposal={onApproveCircuitProposal}
             onApproveAssemblyProposal={onApproveAssemblyProposal}
@@ -217,6 +223,19 @@ export function Workbench({
                   <legend className="sr-only">Design view</legend>
                   <div className="inline-flex rounded-full bg-field p-0.5 shadow-btn">
                     <Button
+                      aria-pressed={designView === "lab"}
+                      onClick={() => setDesignView("lab")}
+                      size="xs"
+                      variant={designView === "lab" ? "secondary" : "ghost"}
+                      className={
+                        designView === "lab"
+                          ? "rounded-full bg-surface shadow-btn"
+                          : "rounded-full text-ink-3 hover:text-ink"
+                      }
+                    >
+                      Lab coach
+                    </Button>
+                    <Button
                       aria-pressed={designView === "schematic"}
                       onClick={() => setDesignView("schematic")}
                       size="xs"
@@ -244,11 +263,17 @@ export function Workbench({
                     </Button>
                   </div>
                   <span className="ml-auto self-center text-[11.5px] text-ink-3">
-                    Pi controls firmware and local simulation
+                    Lab coach is the beginner default · CAD is sandbox
                   </span>
                 </fieldset>
                 <div className="min-h-0 flex-1">
-                  {designView === "schematic" ? (
+                  {designView === "lab" ? (
+                    <LabCoachPanel
+                      key={activeProject.id}
+                      projectId={activeProject.id}
+                      onAskCoach={(prompt) => setComposerSeed(prompt)}
+                    />
+                  ) : designView === "schematic" ? (
                     <CircuitEditor
                       onExport={onExportCircuit}
                       onExportArchive={onExportProjectArchive}
@@ -278,6 +303,8 @@ function ConversationPane({
   error,
   messages,
   preferences,
+  composerSeed,
+  onComposerSeedConsumed,
   onSendMessage,
   onChooseAttachments,
   onReindexAttachment,
@@ -300,6 +327,8 @@ function ConversationPane({
   readonly error: string | undefined;
   readonly messages: readonly ChatMessage[];
   readonly preferences: AppPreferences | undefined;
+  readonly composerSeed: string | undefined;
+  readonly onComposerSeedConsumed: () => void;
   readonly onSendMessage: (
     text: string,
     attachmentIds: readonly string[],
@@ -334,10 +363,10 @@ function ConversationPane({
   const [speakReplies, setSpeakReplies] = useState(preferences?.spokenReplies ?? false);
   const [speaking, setSpeaking] = useState(false);
   const [speechSettingsOpen, setSpeechSettingsOpen] = useState(false);
-  const [speechVoices, setSpeechVoices] = useState<readonly SpeechSynthesisVoice[]>([]);
-  const [speechVoiceUri, setSpeechVoiceUri] = useState(preferences?.speechVoiceUri ?? "");
   const [speechRate, setSpeechRate] = useState(preferences?.speechRate ?? 1);
   const [speechVolume, setSpeechVolume] = useState(preferences?.speechVolume ?? 1);
+  const [voiceAssets, setVoiceAssets] = useState<VoiceAssetStatus>();
+  const [speechStatus, setSpeechStatus] = useState<string>();
   const [voiceInputState, setVoiceInputState] = useState<
     "idle" | "requesting" | "recording" | "transcribing" | "error"
   >("idle");
@@ -346,6 +375,8 @@ function ConversationPane({
   const [voiceDeviceId, setVoiceDeviceId] = useState<string>();
   const [voiceLevel, setVoiceLevel] = useState(0);
   const spokenMessageIdRef = useRef<string | undefined>(undefined);
+  const speechAudioRef = useRef<HTMLAudioElement | undefined>(undefined);
+  const speechObjectUrlRef = useRef<string | undefined>(undefined);
   const voiceRecorderRef = useRef<MediaRecorder | undefined>(undefined);
   const voiceStreamRef = useRef<MediaStream | undefined>(undefined);
   const voiceChunksRef = useRef<Blob[]>([]);
@@ -360,6 +391,14 @@ function ConversationPane({
     agentSnapshot?.activeProjectId === project.id && agentSnapshot.activity === "ready";
   const thinking = agentSnapshot?.activity === "thinking";
   const wakeWordEnabled = preferences?.wakeWordEnabled ?? false;
+
+  useEffect(() => {
+    if (!composerSeed) {
+      return;
+    }
+    setDraft(composerSeed);
+    onComposerSeedConsumed();
+  }, [composerSeed, onComposerSeedConsumed]);
 
   const eve = useEveWakeWord({
     enabled: wakeWordEnabled,
@@ -376,40 +415,91 @@ function ConversationPane({
     },
   });
 
+  const stopSpeechPlayback = useCallback((): void => {
+    void window.circuitHarness.cancelSpeech();
+    if (speechAudioRef.current) {
+      speechAudioRef.current.pause();
+      speechAudioRef.current.src = "";
+      speechAudioRef.current = undefined;
+    }
+    if (speechObjectUrlRef.current) {
+      URL.revokeObjectURL(speechObjectUrlRef.current);
+      speechObjectUrlRef.current = undefined;
+    }
+    setSpeaking(false);
+  }, []);
+
   const speakText = useCallback(
     (text: string): void => {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      const voice =
-        speechVoices.find((candidate) => candidate.voiceURI === speechVoiceUri) ?? speechVoices[0];
-      if (!voice) return;
-      utterance.voice = voice;
+      // Never pass raw assistant message.content to TTS — only the summary.
+      const summary = prepareSpokenReply(text);
+      if (!summary) return;
+      stopSpeechPlayback();
+      setSpeaking(true);
+      setSpeechStatus("Synthesizing with local Chatterbox…");
       const prosody = toneProsody(preferences?.voiceTone ?? "warm");
-      utterance.pitch = prosody.pitch;
-      utterance.rate = Math.max(0.5, Math.min(2, speechRate * prosody.rate));
-      utterance.volume = speechVolume;
-      utterance.onstart = () => setSpeaking(true);
-      utterance.onend = () => setSpeaking(false);
-      utterance.onerror = () => setSpeaking(false);
-      window.speechSynthesis.speak(utterance);
+      // Map tone to a bounded exaggeration hint; rate still shapes playback.
+      const exaggeration =
+        preferences?.voiceTone === "energetic"
+          ? 0.7
+          : preferences?.voiceTone === "calm"
+            ? 0.35
+            : 0.5;
+      void window.circuitHarness
+        .speakText({ text: summary, exaggeration })
+        .then((result) => {
+          if (voiceDisposedRef.current) return;
+          const blob = new Blob([result.wavBytes.slice()], { type: "audio/wav" });
+          const url = URL.createObjectURL(blob);
+          speechObjectUrlRef.current = url;
+          const audio = new Audio(url);
+          audio.playbackRate = Math.max(0.5, Math.min(2, speechRate * prosody.rate));
+          audio.volume = speechVolume;
+          speechAudioRef.current = audio;
+          audio.onended = () => {
+            setSpeaking(false);
+            setSpeechStatus(undefined);
+            if (speechObjectUrlRef.current === url) {
+              URL.revokeObjectURL(url);
+              speechObjectUrlRef.current = undefined;
+            }
+          };
+          audio.onerror = () => {
+            setSpeaking(false);
+            setSpeechStatus("Spoken reply playback failed.");
+          };
+          setSpeechStatus(`Speaking summary (${result.model})`);
+          void audio.play().catch(() => {
+            setSpeaking(false);
+            setSpeechStatus("Spoken reply playback was blocked.");
+          });
+        })
+        .catch((reason: unknown) => {
+          setSpeaking(false);
+          setSpeechStatus(reason instanceof Error ? reason.message : "Chatterbox speech failed.");
+          void window.circuitHarness.ensureVoiceAssets().catch(() => undefined);
+        });
     },
-    [preferences?.voiceTone, speechRate, speechVoiceUri, speechVoices, speechVolume],
+    [preferences?.voiceTone, speechRate, speechVolume, stopSpeechPlayback],
   );
 
   useEffect(() => {
     if (!preferences) return;
     setSpeakReplies(preferences.spokenReplies);
-    setSpeechVoiceUri(preferences.speechVoiceUri);
     setSpeechRate(preferences.speechRate);
     setSpeechVolume(preferences.speechVolume);
   }, [preferences]);
 
   useEffect(() => {
-    const loadVoices = (): void =>
-      setSpeechVoices(window.speechSynthesis.getVoices().filter((voice) => voice.localService));
-    loadVoices();
-    window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
-    return () => window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
+    void window.circuitHarness
+      .getVoiceAssetStatus()
+      .then(setVoiceAssets)
+      .catch(() => undefined);
+    void window.circuitHarness
+      .ensureVoiceAssets()
+      .then(setVoiceAssets)
+      .catch(() => undefined);
+    return window.circuitHarness.onVoiceAssetStatus(setVoiceAssets);
   }, []);
 
   useEffect(() => {
@@ -419,8 +509,7 @@ function ConversationPane({
       voiceInputState === "requesting" ||
       voiceInputState === "recording"
     ) {
-      window.speechSynthesis.cancel();
-      setSpeaking(false);
+      stopSpeechPlayback();
       return;
     }
     const message = [...messages]
@@ -430,13 +519,14 @@ function ConversationPane({
       return;
     }
     spokenMessageIdRef.current = message.id;
+    // Speak a summary only — full chat text stays on screen unchanged.
     speakText(message.content);
-  }, [messages, speakReplies, thinking, voiceInputState, speakText]);
+  }, [messages, speakReplies, thinking, voiceInputState, speakText, stopSpeechPlayback]);
 
   useEffect(() => {
     voiceDisposedRef.current = false;
     return () => {
-      window.speechSynthesis.cancel();
+      stopSpeechPlayback();
       voiceDisposedRef.current = true;
       if (voiceTimeoutRef.current !== undefined) {
         window.clearTimeout(voiceTimeoutRef.current);
@@ -453,7 +543,7 @@ function ConversationPane({
       void voiceAudioContextRef.current?.close();
       void window.circuitHarness.cancelTranscription(project.id);
     };
-  }, [project.id]);
+  }, [project.id, stopSpeechPlayback]);
 
   useEffect(() => {
     if (!viewerAttachment) {
@@ -566,8 +656,7 @@ function ConversationPane({
       return;
     }
 
-    window.speechSynthesis.cancel();
-    setSpeaking(false);
+    stopSpeechPlayback();
     setVoiceInputState("requesting");
     setVoiceStatus("Requesting microphone permission…");
     try {
@@ -712,8 +801,7 @@ function ConversationPane({
           aria-pressed={speakReplies}
           onClick={() => {
             if (speakReplies) {
-              window.speechSynthesis.cancel();
-              setSpeaking(false);
+              stopSpeechPlayback();
               setSpeakReplies(false);
               if (preferences) {
                 void onUpdatePreferences({ ...preferences, spokenReplies: false });
@@ -1203,34 +1291,44 @@ function ConversationPane({
           <DialogHeader>
             <DialogTitle>Spoken reply settings</DialogTitle>
             <DialogDescription>
-              Replies are spoken locally by the operating system only when enabled.
+              Replies use local Resemble Chatterbox TTS. Long technical messages are summarized
+              before speech; full chat text stays on screen.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <label className="grid gap-1.5 text-sm" htmlFor="speech-voice">
-              Voice
-              <select
-                className="h-9 rounded-md border bg-background px-3"
-                id="speech-voice"
-                onChange={(event) => {
-                  const speechVoiceUri = event.currentTarget.value;
-                  setSpeechVoiceUri(speechVoiceUri);
-                  if (preferences) {
-                    void onUpdatePreferences({ ...preferences, speechVoiceUri });
-                  }
-                }}
-                value={speechVoiceUri}
-              >
-                <option value="">
-                  {speechVoices.length ? "Automatic local voice" : "No installed local voice found"}
-                </option>
-                {speechVoices.map((voice) => (
-                  <option key={voice.voiceURI} value={voice.voiceURI}>
-                    {voice.name} · {voice.lang}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="rounded-md border bg-inset px-3 py-2 text-xs text-ink-2">
+              <p>
+                Whisper STT:{" "}
+                {voiceAssets?.whisper.ready
+                  ? "ready"
+                  : voiceAssets?.whisper.downloading
+                    ? "downloading…"
+                    : voiceAssets?.whisper.error
+                      ? `error — ${voiceAssets.whisper.error}`
+                      : "not ready"}
+              </p>
+              <p>
+                Chatterbox TTS:{" "}
+                {voiceAssets?.chatterbox.ready
+                  ? "ready"
+                  : voiceAssets?.chatterbox.downloading
+                    ? "downloading…"
+                    : voiceAssets?.chatterbox.error
+                      ? `error — ${voiceAssets.chatterbox.error}`
+                      : "not ready"}
+              </p>
+              <p>
+                LiveKit wake word:{" "}
+                {voiceAssets?.wakeword.ready
+                  ? "ready"
+                  : voiceAssets?.wakeword.downloading
+                    ? "downloading…"
+                    : voiceAssets?.wakeword.error
+                      ? `error — ${voiceAssets.wakeword.error}`
+                      : "not ready"}
+              </p>
+              {speechStatus ? <p className="mt-1 text-ink-3">{speechStatus}</p> : null}
+            </div>
             <label className="grid gap-1.5 text-sm" htmlFor="speech-rate">
               Rate · {speechRate.toFixed(1)}×
               <input
@@ -1269,8 +1367,8 @@ function ConversationPane({
             </label>
           </div>
           <p className="text-xs text-muted-foreground">
-            Tone: {preferences?.voiceTone ?? "warm"}. The installed operating-system voice runs
-            locally; rate and pitch are shaped to match this profile.
+            Tone: {preferences?.voiceTone ?? "warm"}. Chatterbox-Nano weights download on first
+            start; synthesis stays on-device and never uses browser speechSynthesis.
           </p>
           <DialogFooter>
             <Button

@@ -118,8 +118,42 @@ describe("LocalSimulatorService", () => {
 
     await writeFile(model, "tampered local multilingual model");
     const tampered = new LocalSimulatorService(true, root, path.join(root, "unused"));
-    await expect(tampered.resolveVoiceAsset("bin/whisper-cli")).resolves.toBeUndefined();
+    // Executable remains independently verifiable when only the model is tampered.
+    await expect(tampered.resolveVoiceAsset("bin/whisper-cli")).resolves.toBe(executable);
     await expect(tampered.resolveVoiceAsset(modelRelativePath)).resolves.toBeUndefined();
+  });
+
+  it("resolves the Whisper executable when the large model is absent from the package", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "local-voice-runtime-only-"));
+    temporaryDirectories.push(root);
+    const hostRoot = path.join(root, "voice", `${process.platform}-${process.arch}`);
+    const executableRelativePath =
+      process.platform === "win32" ? "bin/whisper-cli.exe" : "bin/whisper-cli";
+    const executable = path.join(hostRoot, ...executableRelativePath.split("/"));
+    await mkdir(path.dirname(executable), { recursive: true });
+    await writeFile(executable, "runtime-only whisper executable");
+    await chmod(executable, 0o700);
+    await writeFile(
+      path.join(hostRoot, "manifest.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        host: { platform: process.platform, architecture: process.arch },
+        engine: { id: "whisper.cpp", commit: "pinned-fixture" },
+        model: { id: "whisper-small-multilingual-q5_1" },
+        files: [
+          manifestRecord(executableRelativePath, "runtime-only whisper executable"),
+          {
+            relativePath: "models/ggml-small-q5_1.bin",
+            byteSize: 190085487,
+            sha256: "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+          },
+        ],
+      }),
+    );
+
+    const service = new LocalSimulatorService(true, root, path.join(root, "unused"));
+    await expect(service.resolveVoiceAsset("bin/whisper-cli")).resolves.toBe(executable);
+    await expect(service.resolveVoiceAsset("models/ggml-small-q5_1.bin")).resolves.toBeUndefined();
   });
 });
 

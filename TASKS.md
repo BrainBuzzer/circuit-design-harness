@@ -64,6 +64,19 @@ Acceptance: README, ADRs, target schemas, UI target list, Pi tools, compiler map
 - [x] Prevent Pi from installing a generated model pack directly; installation is user-only IPC.
 - [ ] Add provider-backed automated login/session tests using dedicated non-personal fixtures.
 
+## Phase 3b — Mode A lab coach (beginner default)
+
+- [x] Define validated lesson pack schema (board, parts allowlist, pin map, ordered steps, camera checklist, common mistakes, limitations, keywords).
+- [x] Ship ≥5 hand-authored starter lessons covering Arduino Uno R3 and ESP32-S3 (LED+resistor, pushbutton, potentiometer, button+active buzzer, HC-SR04).
+- [x] Pure coach progress helpers: start, advance, go-to-step, clear, active-step context for camera.
+- [x] Persist per-project `coach.json` and expose get/start/advance/go-to/clear IPC + preload API.
+- [x] Register lab coach agent tools; demote freeform invent when a lesson matches or is active; step-bound camera inspect guidelines and visual-request injection.
+- [x] Workbench Lab coach tab as default laboratory view with lesson picker, step reference, checklist, and coach prompts.
+- [x] Document Mode A default and claim boundary in README, TASKS, and ADR 0011.
+- [x] Golden Arduino sketches per lesson; `get_lab_lesson_firmware` / `apply_lab_lesson_firmware`; UI load+compile; `scripts/setup-arduino-cli.sh` + docs for arduino-cli cores (Uno + ESP32-S3).
+
+Acceptance: domain validation rejects bad lessons; coach tools and routing tests cover both boards and check-my-build step binding; freeform Pomodoro remains advanced-only when no lesson is active; every lesson has golden firmware matching board target.
+
 ## Phase 4 — Logical circuit and publication slice
 
 - [x] Define schema-v3 canonical components, stable pins, nets, constraints, placements, and publication metadata, with tested v1/v2 migration and retained backups.
@@ -94,6 +107,7 @@ Acceptance: README, ADRs, target schemas, UI target list, Pi tools, compiler map
 - [x] Detect stale circuit/assembly revisions.
 - [x] Persist assembly transactions and expose assembly state to Pi.
 - [x] Resolve Pi operations from stable component references, validate whole breadboard proposals without mutation, and reject stale approval.
+- [x] Breadboard propose→approve→persist path: component-referenced semantic diffs, atomic proposal creation, missing-jumper rejection, jumper wire visualization on the review-only map, and occupied-hole / stale-revision guards.
 - [ ] Support split-rail breadboards, mini boards, multiple boards, and custom topology.
 - [ ] Add polarity/orientation/package-fit rules and measurement assertions.
 
@@ -119,8 +133,9 @@ Acceptance: README, ADRs, target schemas, UI target list, Pi tools, compiler map
 - [x] Keep the current preview ephemeral, deterministically route explicit visual phrases through the consent-gated camera operation, attach one revision-linked frame to that same Pi turn, and retain the Pi camera tool for longer workflows.
 - [x] Include circuit revision and capture provenance in multimodal context.
 - [x] Add editable, non-auto-send push-to-talk transcription with local multilingual Whisper, size/time/cancellation guards, and hash-verified model/runtime assets.
-- [x] Add opt-in local “Eve”/“Hey Eve” segmentation, visible listening state, Pi/manual-mic/TTS pause behavior, and cross-project teardown.
-- [-] Add optional installed-local-system spoken replies, tone-shaped wording/rate/pitch, and speech teardown; real-device voice quality/emotion remains unverified.
+- [x] First-start download of hash-pinned Whisper model + Chatterbox (Resemble AI Nano) TTS weights into userData (not installer-packaged); readiness IPC; tamper rejection.
+- [x] Add opt-in local “Eve”/“Hey Eve” via LiveKit wakeword ONNX (not continuous Whisper), command-segment Whisper only after detection, visible listening state, Pi/manual-mic/TTS pause, cross-project teardown, and recoverable wait when wake/Whisper assets are still downloading.
+- [x] Optional spoken replies via local Chatterbox-Nano sidecar, summary-only speech transform (strip dense electrical values), tone-shaped rate, and speech teardown; real-device voice quality/emotion remains unverified.
 - [ ] Add annotations/crops/redaction and capture-retention controls.
 - [ ] Replace bearer-token/self-signed compatibility with authenticated device identity and WebRTC if adaptive media, NAT traversal, or richer phone controls are required.
 - [ ] Run Galaxy S23, representative Indian-accent, noisy-room, echo, latency, battery, roaming, and hostile-LAN qualification.

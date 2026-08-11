@@ -320,7 +320,7 @@ export function AppSidebar({
                 />
                 <PreferenceCheckbox
                   checked={preferences.spokenReplies}
-                  description="Speak completed assistant responses using an installed local system voice."
+                  description="Speak a short local Chatterbox summary of completed assistant responses (full text stays on screen)."
                   disabled={settingsBusy}
                   label="Speak Eve’s replies"
                   onChange={(spokenReplies) =>

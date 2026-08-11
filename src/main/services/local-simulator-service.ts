@@ -91,11 +91,13 @@ export class LocalSimulatorService {
     const hostRoot = this.packaged
       ? path.join(this.resourcesPath, "voice", hostId)
       : path.join(this.repositoryRoot, "voice", "dist", hostId);
-    const asset = (await this.verifyVoiceBundledHost(hostRoot))?.get(
+    const manifestRelativePath =
       process.platform === "win32" && relativePath === "bin/whisper-cli"
         ? "bin/whisper-cli.exe"
-        : relativePath,
-    );
+        : relativePath;
+    // Verify only the requested path. Large models may download on first start and
+    // are intentionally absent from the installer bundle.
+    const asset = await this.verifyVoiceAssetFile(hostRoot, manifestRelativePath);
     if (asset && relativePath === "bin/whisper-cli") {
       try {
         await access(asset, constants.X_OK);
@@ -106,9 +108,12 @@ export class LocalSimulatorService {
     return asset;
   }
 
-  private async verifyVoiceBundledHost(hostRoot: string): Promise<Map<string, string> | undefined> {
-    const cacheKey = `voice:${hostRoot}`;
-    const cached = this.verifiedBundles.get(cacheKey);
+  private async verifyVoiceAssetFile(
+    hostRoot: string,
+    relativePath: string,
+  ): Promise<string | undefined> {
+    const cacheKey = `voice-file:${hostRoot}:${relativePath}`;
+    const cached = this.verifiedExecutables.get(cacheKey);
     if (cached) {
       return cached;
     }
@@ -122,29 +127,26 @@ export class LocalSimulatorService {
       ) {
         return undefined;
       }
-      const resolvedRoot = await realpath(hostRoot);
-      const verified = new Map<string, string>();
-      for (const record of manifest.files) {
-        if (!isSafeRelativePath(record.relativePath) || verified.has(record.relativePath)) {
-          return undefined;
-        }
-        const filePath = path.join(hostRoot, ...record.relativePath.split("/"));
-        const fileInfo = await lstat(filePath);
-        const resolved = await realpath(filePath);
-        if (!fileInfo.isFile() || !resolved.startsWith(`${resolvedRoot}${path.sep}`)) {
-          return undefined;
-        }
-        const content = await readFile(resolved);
-        if (
-          content.byteLength !== record.byteSize ||
-          createHash("sha256").update(content).digest("hex") !== record.sha256
-        ) {
-          return undefined;
-        }
-        verified.set(record.relativePath, filePath);
+      const record = manifest.files.find((file) => file.relativePath === relativePath);
+      if (!record || !isSafeRelativePath(record.relativePath)) {
+        return undefined;
       }
-      this.verifiedBundles.set(cacheKey, verified);
-      return verified;
+      const resolvedRoot = await realpath(hostRoot);
+      const filePath = path.join(hostRoot, ...record.relativePath.split("/"));
+      const fileInfo = await lstat(filePath);
+      const resolved = await realpath(filePath);
+      if (!fileInfo.isFile() || !resolved.startsWith(`${resolvedRoot}${path.sep}`)) {
+        return undefined;
+      }
+      const content = await readFile(resolved);
+      if (
+        content.byteLength !== record.byteSize ||
+        createHash("sha256").update(content).digest("hex") !== record.sha256
+      ) {
+        return undefined;
+      }
+      this.verifiedExecutables.set(cacheKey, filePath);
+      return filePath;
     } catch {
       return undefined;
     }

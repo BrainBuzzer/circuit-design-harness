@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   applyAssemblyOperations,
+  buildBreadboardOccupancy,
   createEmptyAssemblyDocument,
   migrateAssemblyDocument,
   validateAssembly,
@@ -77,6 +78,61 @@ describe("assembly domain", () => {
       placements: [],
       jumpers: [],
     });
+  });
+
+  it("places pins and jumpers, then rejects occupied holes and missing jumper removal", async () => {
+    const circuit = await representativeCircuit();
+    const jumperId = "00000000-0000-4000-8000-0000000000aa";
+    const placed = applyAssemblyOperations(createEmptyAssemblyDocument(1), circuit, [
+      { type: "place_component_pin", componentId: V1, pinId: "positive", hole: "a1" },
+      { type: "place_component_pin", componentId: R1, pinId: "1", hole: "b1" },
+      {
+        type: "add_jumper",
+        jumperId,
+        from: "a5",
+        to: "top+5",
+        color: "red",
+      },
+    ]);
+    expect(placed.document.placements).toHaveLength(2);
+    expect(placed.document.jumpers).toEqual([
+      { id: jumperId, from: "a5", to: "top+5", color: "red" },
+    ]);
+
+    expect(() =>
+      applyAssemblyOperations(placed.document, circuit, [
+        { type: "place_component_pin", componentId: D1, pinId: "anode", hole: "a1" },
+      ]),
+    ).toThrow(/already occupied/i);
+
+    expect(() =>
+      applyAssemblyOperations(placed.document, circuit, [
+        {
+          type: "remove_jumper",
+          jumperId: "00000000-0000-4000-8000-0000000000bb",
+        },
+      ]),
+    ).toThrow(/does not exist/i);
+
+    const removed = applyAssemblyOperations(placed.document, circuit, [
+      { type: "remove_jumper", jumperId },
+    ]);
+    expect(removed.document.jumpers).toEqual([]);
+  });
+
+  it("builds an occupancy map the breadboard editor uses for pins and jumpers", async () => {
+    const circuit = await representativeCircuit();
+    const jumperId = "00000000-0000-4000-8000-0000000000aa";
+    const placed = applyAssemblyOperations(createEmptyAssemblyDocument(1), circuit, [
+      { type: "place_component_pin", componentId: V1, pinId: "positive", hole: "a1" },
+      { type: "place_component_pin", componentId: R1, pinId: "1", hole: "b1" },
+      { type: "add_jumper", jumperId, from: "a5", to: "top+5", color: "red" },
+    ]);
+    const occupied = buildBreadboardOccupancy(placed.document, circuit);
+    expect(occupied.get("a1")).toBe("V1.positive");
+    expect(occupied.get("b1")).toBe("R1.1");
+    expect(occupied.get("a5")).toBe("J1");
+    expect(occupied.get("top+5")).toBe("J1");
   });
 });
 

@@ -120,6 +120,33 @@ export function createEmptyAssemblyDocument(circuitRevision = 0): AssemblyDocume
   };
 }
 
+/**
+ * Occupancy map used by the review-only breadboard UI. Keys are hole IDs;
+ * values are human-readable labels (component.pin and/or jumper index).
+ */
+export function buildBreadboardOccupancy(
+  assembly: AssemblyDocument,
+  circuit: CircuitDocument,
+): ReadonlyMap<string, string> {
+  const holes = new Map<string, string>();
+  for (const placement of assembly.placements) {
+    const reference = circuit.components.find(
+      (candidate) => candidate.id === placement.componentId,
+    )?.reference;
+    for (const pin of placement.pins) {
+      holes.set(pin.hole, `${reference ?? "?"}.${pin.pinId}`);
+    }
+  }
+  for (const [index, jumper] of assembly.jumpers.entries()) {
+    const label = `J${index + 1}`;
+    const fromLabel = holes.get(jumper.from);
+    holes.set(jumper.from, fromLabel ? `${fromLabel}+${label}` : label);
+    const toLabel = holes.get(jumper.to);
+    holes.set(jumper.to, toLabel ? `${toLabel}+${label}` : label);
+  }
+  return holes;
+}
+
 export function migrateAssemblyDocument(raw: unknown): AssemblyDocument {
   const current = AssemblyDocumentSchema.safeParse(raw);
   if (current.success) {
@@ -186,7 +213,10 @@ export function applyAssemblyOperations(
         to: operation.to,
         color: operation.color,
       });
-    } else {
+    } else if (operation.type === "remove_jumper") {
+      if (!jumpers.some((candidate) => candidate.id === operation.jumperId)) {
+        throw new Error(`Assembly jumper ${operation.jumperId} does not exist.`);
+      }
       jumpers = jumpers.filter((candidate) => candidate.id !== operation.jumperId);
     }
   }

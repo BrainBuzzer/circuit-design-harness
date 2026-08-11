@@ -41,7 +41,7 @@ describe("TranscriptionService", () => {
     );
     await expect(
       unavailable.transcribe({ projectId: "project-1", wavBytes: WAV_BYTES, durationMs: 500 }),
-    ).rejects.toThrow("verified local Whisper runtime is unavailable");
+    ).rejects.toThrow(/Whisper runtime is unavailable.*downloading|verification/i);
 
     const malformed = new TranscriptionService(
       async () => ({ executablePath: "whisper", modelPath: "model" }),

@@ -41,6 +41,8 @@
     "src/domain/circuit.ts",
     "src/domain/component-catalog.ts",
     "src/domain/schematic-geometry.ts",
-    "src/domain/circuit-simulation.ts"
+    "src/domain/circuit-simulation.ts",
+    "src/domain/speech-summary.ts",
+    "src/domain/lesson.ts"
   ]
 }

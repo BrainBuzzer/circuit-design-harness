@@ -149,6 +149,53 @@ describe("AssemblyService", () => {
     );
     expect(await assemblies.listPendingProposals(fixture.projectId)).toHaveLength(1);
   });
+
+  it("approves place_component_pin and add_jumper proposals into a refreshed snapshot", async () => {
+    const fixture = await createFixture();
+    const jumperId = "00000000-0000-4000-8000-0000000000cc";
+    const assemblies = new AssemblyService(
+      fixture.projects,
+      new CircuitService(fixture.projects, () => undefined),
+      () => undefined,
+    );
+    const proposal = await assemblies.createProposal(
+      fixture.projectId,
+      "Place supply and a rail jumper.",
+      [
+        { type: "place_component_pin", componentId: V1, pinId: "positive", hole: "a1" },
+        {
+          type: "add_jumper",
+          jumperId,
+          from: "a8",
+          to: "top+8",
+          color: "red",
+        },
+      ],
+    );
+    expect(proposal.semanticDiff.join(" ")).toMatch(/V1 pin positive/);
+    expect(proposal.semanticDiff.join(" ")).toMatch(/red jumper/);
+
+    const approved = await assemblies.approveProposal(fixture.projectId, proposal.id);
+    expect(approved.document.revision).toBe(1);
+    expect(approved.document.placements).toEqual([
+      { componentId: V1, pins: [{ pinId: "positive", hole: "a1" }] },
+    ]);
+    expect(approved.document.jumpers).toEqual([
+      { id: jumperId, from: "a8", to: "top+8", color: "red" },
+    ]);
+    expect(
+      JSON.parse(await readFile(path.join(fixture.projectDirectory, "assembly.json"), "utf8")),
+    ).toMatchObject({
+      revision: 1,
+      jumpers: [{ id: jumperId, from: "a8", to: "top+8", color: "red" }],
+    });
+
+    await expect(
+      assemblies.createProposal(fixture.projectId, "Occupy same hole.", [
+        { type: "place_component_pin", componentId: R1, pinId: "1", hole: "a1" },
+      ]),
+    ).rejects.toThrow(/already occupied/i);
+  });
 });
 
 async function createFixture(): Promise<{
