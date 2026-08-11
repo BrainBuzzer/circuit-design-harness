@@ -1,6 +1,6 @@
 {
   "name": "circuit-design-harness",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "author": "Circuit Design Harness contributors",
   "description": "An AI-assisted electronics design and physical-build workbench powered by Pi.",
