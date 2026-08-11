@@ -1,7 +1,7 @@
 import {
+  type CoachProgress,
   isBeginnerBuildIntent,
   matchLessonFromText,
-  type CoachProgress,
   resolveActiveLessonStep,
 } from "@domain/lesson";
 import { getStarterLessons } from "@domain/lesson-fixtures";

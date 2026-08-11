@@ -24,7 +24,10 @@ async function createCoach(): Promise<{
 }> {
   const root = await mkdtemp(path.join(os.tmpdir(), "cdh-coach-tools-"));
   temporaryDirectories.push(root);
-  const projects = new ProjectService(path.join(root, "settings.json"), path.join(root, "projects"));
+  const projects = new ProjectService(
+    path.join(root, "settings.json"),
+    path.join(root, "projects"),
+  );
   await projects.initialize();
   const state = await projects.createProject("Tools");
   const projectId = state.activeProjectId;
@@ -49,13 +52,7 @@ async function executeTool(
   }
   // ToolDefinition.execute requires signal/onUpdate/ctx; unit tests invoke the real
   // tool bodies with empty session context.
-  const result = await tool.execute(
-    "call-1",
-    params as never,
-    undefined,
-    undefined,
-    {} as never,
-  );
+  const result = await tool.execute("call-1", params as never, undefined, undefined, {} as never);
   const textPart = result.content.find((part) => part.type === "text");
   if (!textPart || textPart.type !== "text") {
     throw new Error("expected text content");

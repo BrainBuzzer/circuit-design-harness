@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
 import { startLessonProgress } from "@domain/lesson";
 import { getStarterLessons } from "@domain/lesson-fixtures";
+import { describe, expect, it } from "vitest";
 import { buildAgentRequestRouting, stripHarnessInjectedContext } from "./agent-request-routing";
 
 describe("buildAgentRequestRouting", () => {

@@ -21,12 +21,21 @@ const UNO_LED: Lesson = parseLesson({
   parts: [
     { id: "uno", name: "Arduino Uno R3", quantity: 1 },
     { id: "led", name: "5 mm LED (any color)", quantity: 1 },
-    { id: "r330", name: "330 Ω resistor", quantity: 1, notes: "Orange-orange-brown common band code" },
+    {
+      id: "r330",
+      name: "330 Ω resistor",
+      quantity: 1,
+      notes: "Orange-orange-brown common band code",
+    },
     { id: "jumper", name: "Male-male jumper wires", quantity: 2 },
     { id: "breadboard", name: "Half-size solderless breadboard", quantity: 1 },
   ],
   pinMap: [
-    { signal: "LED_ANODE_VIA_RESISTOR", boardPin: "D13", notes: "Resistor between D13 and LED anode" },
+    {
+      signal: "LED_ANODE_VIA_RESISTOR",
+      boardPin: "D13",
+      notes: "Resistor between D13 and LED anode",
+    },
     { signal: "LED_CATHODE", boardPin: "GND", notes: "Short LED leg to ground rail" },
   ],
   breadboardIntent:
@@ -44,16 +53,7 @@ const UNO_LED: Lesson = parseLesson({
   ],
   firmwareHint:
     "Arduino blink sketch on pin 13: pinMode(13, OUTPUT); digitalWrite(13, HIGH/LOW) with delay.",
-  keywords: [
-    "led",
-    "blink",
-    "resistor",
-    "uno",
-    "arduino",
-    "series resistor",
-    "light",
-    "diode",
-  ],
+  keywords: ["led", "blink", "resistor", "uno", "arduino", "series resistor", "light", "diode"],
   steps: [
     {
       id: "power-gnd",
@@ -115,7 +115,8 @@ const UNO_LED: Lesson = parseLesson({
         "A jumper is visible from the header labeled 13 to the resistor free end",
         "No direct short from pin 13 to GND without the LED path",
       ],
-      completionHint: "Load a blink sketch on pin 13; LED should pulse. If not, re-check polarity and resistor series path.",
+      completionHint:
+        "Load a blink sketch on pin 13; LED should pulse. If not, re-check polarity and resistor series path.",
     },
   ],
 });
@@ -154,8 +155,7 @@ const UNO_BUTTON: Lesson = parseLesson({
     "Does not teach external pull-down or hardware debouncing RC networks.",
     "Camera cannot prove which switch pins are internally connected.",
   ],
-  firmwareHint:
-    "pinMode(2, INPUT_PULLUP); buttonPressed = digitalRead(2) == LOW;",
+  firmwareHint: "pinMode(2, INPUT_PULLUP); buttonPressed = digitalRead(2) == LOW;",
   keywords: ["button", "pushbutton", "switch", "input", "pullup", "uno", "arduino", "press"],
   steps: [
     {
@@ -253,10 +253,7 @@ const UNO_POT: Lesson = parseLesson({
         "Jumper Uno 5 V to the red power rail and Uno GND to the blue/black ground rail.",
       why: "The pot needs a stable top and bottom voltage to divide.",
       referenceSummary: "Uno 5V → + rail; Uno GND → − rail.",
-      cameraChecklist: [
-        "Wire from 5 V to the red rail",
-        "Wire from GND to the ground rail",
-      ],
+      cameraChecklist: ["Wire from 5 V to the red rail", "Wire from GND to the ground rail"],
     },
     {
       id: "seat-pot",
@@ -284,7 +281,8 @@ const UNO_POT: Lesson = parseLesson({
       why: "The wiper voltage is what the ADC measures.",
       referenceSummary: "Center pin → A0.",
       cameraChecklist: ["Jumper from the center pot pin to the header labeled A0"],
-      completionHint: "Serial-print analogRead(A0) while turning the shaft; values should move smoothly.",
+      completionHint:
+        "Serial-print analogRead(A0) while turning the shaft; values should move smoothly.",
     },
   ],
 });
@@ -330,19 +328,8 @@ const ESP_LED: Lesson = parseLesson({
     "QEMU GPIO is unsupported in this product; physical blink is the lesson success check.",
     "Camera cannot prove 3.3 V levels.",
   ],
-  firmwareHint:
-    "Arduino-ESP32: pinMode(4, OUTPUT); digitalWrite(4, HIGH/LOW);",
-  keywords: [
-    "led",
-    "blink",
-    "resistor",
-    "esp32",
-    "esp32-s3",
-    "esp32s3",
-    "devkit",
-    "gpio",
-    "light",
-  ],
+  firmwareHint: "Arduino-ESP32: pinMode(4, OUTPUT); digitalWrite(4, HIGH/LOW);",
+  keywords: ["led", "blink", "resistor", "esp32", "esp32-s3", "esp32s3", "devkit", "gpio", "light"],
   steps: [
     {
       id: "identify-gnd",
@@ -473,11 +460,7 @@ const ESP_BUZZER_BUTTON: Lesson = parseLesson({
         "Wire pushbutton between header pin 5 (GPIO5) and GND. Use INPUT_PULLUP in firmware later.",
       why: "Press connects GPIO5 to ground for a clear LOW reading.",
       referenceSummary: "GPIO5 — button — GND.",
-      cameraChecklist: [
-        "Button on breadboard",
-        "Jumper to pin labeled 5",
-        "Other side to ground",
-      ],
+      cameraChecklist: ["Button on breadboard", "Jumper to pin labeled 5", "Other side to ground"],
     },
     {
       id: "buzzer-gnd",

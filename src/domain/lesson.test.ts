@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { getStarterLessonById, getStarterLessons, STARTER_LESSONS } from "./lesson-fixtures";
 import {
   advanceLessonProgress,
   buildCoachStepContextPayload,
@@ -13,6 +12,7 @@ import {
   startLessonProgress,
   validateLessonCatalog,
 } from "./lesson";
+import { getStarterLessonById, getStarterLessons, STARTER_LESSONS } from "./lesson-fixtures";
 
 describe("lesson fixtures", () => {
   it("validates every shipped starter lesson through the real schema", () => {
@@ -154,9 +154,7 @@ describe("lesson matching and beginner intent", () => {
   it("detects beginner build intent without treating Pomodoro as coach-default invent", () => {
     expect(isBeginnerBuildIntent("teach me to wire an LED")).toBe(true);
     expect(isBeginnerBuildIntent("check my build")).toBe(true);
-    expect(isBeginnerBuildIntent("I need you to use ESP32 to create a Pomodoro timer")).toBe(
-      false,
-    );
+    expect(isBeginnerBuildIntent("I need you to use ESP32 to create a Pomodoro timer")).toBe(false);
   });
 
   it("round-trips schema parse on fixture JSON clones", () => {

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { getStarterLessons } from "./lesson-fixtures";
 import {
   ARDUINO_CLI_FQBN,
   getLessonFirmware,
@@ -7,6 +6,7 @@ import {
   listLessonFirmwareSummaries,
   requireLessonFirmware,
 } from "./lesson-firmware";
+import { getStarterLessons } from "./lesson-fixtures";
 
 describe("lesson golden firmware", () => {
   it("ships a golden sketch for every starter lesson", () => {
@@ -20,7 +20,9 @@ describe("lesson golden firmware", () => {
       expect(firmware.source.length).toBeGreaterThan(80);
       expect(firmware.successCheck.length).toBeGreaterThan(10);
       // Pin hints from the lesson pin map should appear in source for teachability
-      const pinTokens = lesson.pinMap.map((p) => p.boardPin.replace(/^D/, "").replace(/^GPIO/i, ""));
+      const pinTokens = lesson.pinMap.map((p) =>
+        p.boardPin.replace(/^D/, "").replace(/^GPIO/i, ""),
+      );
       const source = firmware.source;
       // At least one board pin number from the map should be referenced
       expect(pinTokens.some((token) => source.includes(token))).toBe(true);

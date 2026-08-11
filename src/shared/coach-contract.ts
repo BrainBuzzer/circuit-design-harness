@@ -1,10 +1,5 @@
-import type {
-  CoachProgress,
-  Lesson,
-  LessonSummary,
-  LessonStep,
-} from "@domain/lesson";
 import type { EmbeddedTargetId } from "@domain/embedded";
+import type { CoachProgress, Lesson, LessonStep, LessonSummary } from "@domain/lesson";
 import type { CompileArduinoResult } from "./firmware-contract";
 
 export interface CoachSnapshot {

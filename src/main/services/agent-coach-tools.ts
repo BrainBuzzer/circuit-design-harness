@@ -1,10 +1,6 @@
-import {
-  matchLessonFromText,
-  resolveActiveLessonStep,
-  toLessonSummary,
-} from "@domain/lesson";
-import { getStarterLessons } from "@domain/lesson-fixtures";
+import { matchLessonFromText, resolveActiveLessonStep, toLessonSummary } from "@domain/lesson";
 import { listLessonFirmwareSummaries, requireLessonFirmware } from "@domain/lesson-firmware";
+import { getStarterLessons } from "@domain/lesson-fixtures";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { CoachService } from "./coach-service";
@@ -393,7 +389,16 @@ export function createAgentCoachTools(
     },
   });
 
-  return [listLessons, getLesson, startLesson, status, advance, explain, getFirmware, applyFirmware];
+  return [
+    listLessons,
+    getLesson,
+    startLesson,
+    status,
+    advance,
+    explain,
+    getFirmware,
+    applyFirmware,
+  ];
 }
 
 export function matchStarterLessonId(text: string): string | undefined {

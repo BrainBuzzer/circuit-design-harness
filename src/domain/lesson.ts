@@ -280,19 +280,14 @@ export function buildCoachStepContextText(active: ActiveLessonStepContext): stri
  * Match beginner natural-language intent to a shipped lesson.
  * Prefer more specific multi-keyword hits; require board keyword when present.
  */
-export function matchLessonFromText(
-  lessons: readonly Lesson[],
-  text: string,
-): Lesson | undefined {
+export function matchLessonFromText(lessons: readonly Lesson[], text: string): Lesson | undefined {
   const normalized = text.replaceAll(/\s+/g, " ").trim().toLowerCase();
   if (!normalized) {
     return undefined;
   }
 
-  const wantsUno =
-    /\b(?:arduino\s*)?uno\b/.test(normalized) || /\batmega\b/.test(normalized);
-  const wantsEsp =
-    /\besp[ -]?32(?:[ -]?s3)?\b/.test(normalized) || /\bdevkit\b/.test(normalized);
+  const wantsUno = /\b(?:arduino\s*)?uno\b/.test(normalized) || /\batmega\b/.test(normalized);
+  const wantsEsp = /\besp[ -]?32(?:[ -]?s3)?\b/.test(normalized) || /\bdevkit\b/.test(normalized);
 
   const scored = lessons
     .map((lesson) => {

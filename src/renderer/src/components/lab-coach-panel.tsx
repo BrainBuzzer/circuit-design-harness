@@ -1,11 +1,5 @@
 import type { CoachSnapshot } from "@shared/coach-contract";
-import {
-  BookOpenIcon,
-  CheckIcon,
-  ChevronRightIcon,
-  GraduationCapIcon,
-  XIcon,
-} from "lucide-react";
+import { BookOpenIcon, CheckIcon, ChevronRightIcon, GraduationCapIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,8 +31,11 @@ export function LabCoachPanel({ projectId, onAskCoach }: LabCoachPanelProps): Re
       setError(undefined);
       if (next.progress.lessonId) {
         setSelectedLessonId(next.progress.lessonId);
-      } else if (next.lessons[0]) {
-        setSelectedLessonId((current) => current || next.lessons[0]!.id);
+      } else {
+        const firstLessonId = next.lessons[0]?.id;
+        if (firstLessonId) {
+          setSelectedLessonId((current) => current || firstLessonId);
+        }
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -87,14 +84,21 @@ export function LabCoachPanel({ projectId, onAskCoach }: LabCoachPanelProps): Re
           {error && <p className="text-xs text-destructive">{error}</p>}
 
           <div className="flex flex-col gap-2 rounded-xl border border-line bg-field/40 p-3">
-            <label className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+            <p
+              className="text-[11px] font-medium uppercase tracking-wide text-ink-3"
+              id="lesson-picker-label"
+            >
               Start a lesson
-            </label>
+            </p>
             <Select
               value={selectedLessonId}
               onValueChange={(value) => setSelectedLessonId(value ?? "")}
             >
-              <SelectTrigger className="w-full bg-surface" size="sm">
+              <SelectTrigger
+                className="w-full bg-surface"
+                size="sm"
+                aria-labelledby="lesson-picker-label"
+              >
                 <SelectValue placeholder="Choose a starter lesson" />
               </SelectTrigger>
               <SelectContent>
@@ -154,7 +158,9 @@ export function LabCoachPanel({ projectId, onAskCoach }: LabCoachPanelProps): Re
               </div>
               <div>
                 <h4 className="text-[11px] font-medium uppercase tracking-wide text-ink-3">Why</h4>
-                <p className="mt-0.5 text-xs leading-relaxed text-ink-2">{snapshot.activeStep.why}</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-ink-2">
+                  {snapshot.activeStep.why}
+                </p>
               </div>
               <div>
                 <h4 className="text-[11px] font-medium uppercase tracking-wide text-ink-3">

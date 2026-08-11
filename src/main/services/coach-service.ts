@@ -4,8 +4,8 @@ import {
   advanceLessonProgress,
   buildCoachStepContextPayload,
   buildCoachStepContextText,
-  clearLessonProgress,
   type CoachProgress,
+  clearLessonProgress,
   EMPTY_COACH_PROGRESS,
   goToLessonStep,
   type Lesson,
@@ -14,12 +14,12 @@ import {
   startLessonProgress,
   toLessonSummary,
 } from "@domain/lesson";
-import { getStarterLessons } from "@domain/lesson-fixtures";
 import { getLessonFirmware, requireLessonFirmware } from "@domain/lesson-firmware";
+import { getStarterLessons } from "@domain/lesson-fixtures";
 import type { CoachSnapshot } from "@shared/coach-contract";
 import type { CompileArduinoResult } from "@shared/firmware-contract";
-import { writeJsonAtomic } from "./json-file";
 import type { FirmwareService } from "./firmware-service";
+import { writeJsonAtomic } from "./json-file";
 import type { ProjectService } from "./project-service";
 
 export class CoachService {
