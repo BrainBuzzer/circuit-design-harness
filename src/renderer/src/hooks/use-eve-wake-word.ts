@@ -4,7 +4,9 @@ import { encodedAudioBlobToWav } from "@/lib/audio";
 const COMMAND_SEGMENT_MS = 8_000;
 const TARGET_SAMPLE_RATE = 16_000;
 const WINDOW_SAMPLES = 32_000; // ~2s at 16 kHz for LiveKit/openWakeWord
-const HOP_SAMPLES = 1_280; // 80 ms
+/** ScriptProcessor bufferSize must be 0 or a power of two in [256, 16384]. */
+const SCRIPT_PROCESSOR_BUFFER = 1_024; // 64 ms at 16 kHz
+const HOP_SAMPLES = SCRIPT_PROCESSOR_BUFFER;
 const UNAVAILABLE_BACKOFF_MS = 4_000;
 const MAX_UNAVAILABLE_BACKOFF_MS = 30_000;
 
@@ -219,7 +221,7 @@ export function useEveWakeWord({
         });
         audioContext = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
         source = audioContext.createMediaStreamSource(stream);
-        processor = audioContext.createScriptProcessor(HOP_SAMPLES, 1, 1);
+        processor = audioContext.createScriptProcessor(SCRIPT_PROCESSOR_BUFFER, 1, 1);
         processor.onaudioprocess = (event) => {
           if (disposed || handlingDetectionRef.current) return;
           const input = event.inputBuffer.getChannelData(0);
