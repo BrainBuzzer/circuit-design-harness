@@ -128,6 +128,26 @@ jobs:
       - name: Build app
         run: bun run build
 
+      - name: Detect bundled sidecars
+        id: sidecars
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Sidecars are gitignored; full product releases need them built on the runner
+          # or restored from a private cache. Without them the app still packages, but
+          # local Uno/S3/Whisper execution is unavailable in that artifact.
+          has_sim="false"
+          has_voice="false"
+          if [[ -x simulator/dist/darwin-arm64/bin/simavr && -x simulator/dist/darwin-arm64/bin/qemu-system-xtensa ]]; then
+            has_sim="true"
+          fi
+          if [[ -x voice/dist/darwin-arm64/bin/whisper-cli ]]; then
+            has_voice="true"
+          fi
+          echo "simulators=${has_sim}" >> "$GITHUB_OUTPUT"
+          echo "voice=${has_voice}" >> "$GITHUB_OUTPUT"
+          echo "Sidecars: simulators=${has_sim} voice=${has_voice}"
+
       - name: Import Apple signing material (optional)
         id: apple
         env:
@@ -144,8 +164,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Never echo secret values.
           if [[ "${WANT_SIGNED}" != "true" || -z "${CSC_LINK:-}" ]]; then
             echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "distribution=ad-hoc" >> "$GITHUB_OUTPUT"
             echo "Producing ad-hoc package artifacts (signed release not requested or CSC_LINK unset)."
             exit 0
           fi
@@ -161,25 +183,40 @@ jobs:
           security import "$CERT_PATH" -P "${CSC_KEY_PASSWORD:-}" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "$CERT_PATH"
 
-          if [[ -n "${APPLE_API_KEY:-}" && -n "${APPLE_API_KEY_ID:-}" ]]; then
+          notarize_ready="false"
+          if [[ -n "${APPLE_API_KEY:-}" && -n "${APPLE_API_KEY_ID:-}" && -n "${APPLE_API_ISSUER:-}" ]]; then
             mkdir -p "$RUNNER_TEMP/private_keys"
-            # Accept raw PEM or base64-encoded .p8 contents.
+            # Accept raw PEM or base64-encoded .p8 contents. Never print key material.
             if [[ "${APPLE_API_KEY}" == ----* ]]; then
               printf '%s\n' "$APPLE_API_KEY" > "$RUNNER_TEMP/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
             else
               echo "$APPLE_API_KEY" | base64 --decode > "$RUNNER_TEMP/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
             fi
+            chmod 600 "$RUNNER_TEMP/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
             echo "APPLE_API_KEY=$RUNNER_TEMP/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8" >> "$GITHUB_ENV"
             echo "APPLE_API_KEY_ID=${APPLE_API_KEY_ID}" >> "$GITHUB_ENV"
             echo "APPLE_API_ISSUER=${APPLE_API_ISSUER}" >> "$GITHUB_ENV"
+            notarize_ready="true"
+          elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
+            notarize_ready="true"
           fi
 
           if [[ -n "${CSC_NAME:-}" ]]; then
-            echo "CSC_NAME=${CSC_NAME}" >> "$GITHUB_ENV"
+            # electron-builder rejects a "Developer ID Application:" prefix here.
+            cleaned="${CSC_NAME#Developer ID Application: }"
+            echo "CSC_NAME=${cleaned}" >> "$GITHUB_ENV"
           fi
+
           echo "signed=true" >> "$GITHUB_OUTPUT"
-          echo "Apple signing material imported."
+          if [[ "$notarize_ready" == "true" ]]; then
+            echo "distribution=developer-id-notarized" >> "$GITHUB_OUTPUT"
+          else
+            echo "distribution=developer-id-signed-only" >> "$GITHUB_OUTPUT"
+            echo "Warning: signing cert imported but notarization credentials are incomplete."
+          fi
+          echo "Apple signing material imported (notarize_ready=${notarize_ready})."
 
       - name: Package signed + notarized macOS release
         if: steps.apple.outputs.signed == 'true'
@@ -192,6 +229,18 @@ jobs:
         run: |
           set -euo pipefail
           bun run package:mac
+
+      - name: Verify signed app bundle
+        if: steps.apple.outputs.signed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$(find release -name 'Circuit Design Harness.app' -type d | head -n1)"
+          test -n "$app"
+          bash scripts/verify-macos-gatekeeper.sh "$app" || {
+            echo "verify script reported a hard failure"
+            exit 1
+          }
 
       - name: Package ad-hoc macOS artifacts
         if: steps.apple.outputs.signed != 'true'
@@ -223,7 +272,14 @@ jobs:
             ls -laR release || true
             exit 1
           fi
+          dist="${{ steps.apple.outputs.distribution }}"
+          echo "distribution=${dist}" >> "$GITHUB_OUTPUT"
           echo "count=${count}" >> "$GITHUB_OUTPUT"
+          {
+            echo "distribution=${dist}"
+            echo "simulators=${{ steps.sidecars.outputs.simulators }}"
+            echo "voice=${{ steps.sidecars.outputs.voice }}"
+          } > release-upload/RELEASE_CHANNEL.txt
           ls -la release-upload
 
       - name: Upload workflow artifacts
@@ -248,12 +304,25 @@ jobs:
 
             Local-first Electron workbench for Pi-assisted circuit design.
 
-            ### macOS arm64
-            - Install the `.dmg` or extract the `.zip`.
-            - Signed/notarized builds require Apple secrets in the repository; otherwise this release is **ad-hoc signed** for CI smoke and must not be treated as a Gatekeeper-ready distribution.
+            ### Distribution channel
+            - **${{ steps.apple.outputs.distribution }}**
+            - Simulator sidecars embedded: **${{ steps.sidecars.outputs.simulators }}**
+            - Voice/Whisper sidecars embedded: **${{ steps.sidecars.outputs.voice }}**
+
+            | Channel | Gatekeeper | Notes |
+            | --- | --- | --- |
+            | `developer-id-notarized` | Open without right-click bypass on a normal Mac | Developer ID + notarytool + staple when local tools allow |
+            | `developer-id-signed-only` | Not sufficient alone | Signed but notarization credentials were incomplete |
+            | `ad-hoc` | Blocked by Gatekeeper | CI smoke only |
+
+            Sidecars (`simulator/dist`, `voice/dist`) are gitignored. CI packages whatever is present on the runner; a full simulation-capable release currently needs those trees built locally (`bun run simulators:build` / `bun run voice:build`) or restored into the job before packaging.
+
+            ### macOS arm64 install
+            - Prefer the `.dmg`, or extract the `.zip`.
+            - Ad-hoc workaround only (not the product path): right-click → Open, or `xattr -dr com.apple.quarantine "/path/to/Circuit Design Harness.app"`.
 
             ### Verified boundary
-            See `README.md` and `TASKS.md` for the exact claim stages (structural validation, compile, processor execution, etc.).
+            See `README.md` and `TASKS.md` for claim stages (structural validation, compile, processor execution, etc.).
 
             ### Quality
             - `bun run quality` passed in CI before packaging.

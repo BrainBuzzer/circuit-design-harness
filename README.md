@@ -26,7 +26,7 @@ Last audited: 2026-08-09
 | ESPHome | Pinned official catalog snapshot: 738 components and 298 ESP32 boards, search, official docs/source links, structural validation, safe native validation, compile, and artifact recording |
 | Built-in ICs | Ten manufacturer-sourced pin maps and deterministic functional adapters, approval-gated Pi placement, net propagation, state/edge steps, driver-conflict diagnostics, and scenario assertions; mixed-signal models are explicitly idealized |
 | Datasheet model packs | Pi-readable strict JSON contract, attachment/page provenance, explicit UI approval, hashing, monotonic revisions, preserved history, and fixed declarative runtimes for truth tables, analog curves, I²C registers, and SPI command recognition |
-| Packaging | Hash-verified macOS arm64 simulator and Whisper sidecars; local `package:dir` remains ad-hoc; `package:mac` is wired for Developer ID + hardened runtime + notarize/staple when Apple credentials and a Developer ID Application certificate are present; GitHub Actions CI quality gates + macOS package smoke and tag/`workflow_dispatch` release pipelines publish DMG/ZIP artifacts; Windows/Linux sidecars and clean-Mac Gatekeeper verification remain release work |
+| Packaging | Hash-verified macOS arm64 simulator and Whisper sidecars; local `package:dir` remains ad-hoc; `package:mac` signs with Developer ID + hardened runtime and notarizes via notarytool when Apple credentials are present; a Developer ID + notarized arm64 ZIP for v0.1.0 was accepted by Apple notary (`Ready for distribution`) with nested simulators/voice Mach-O in the ticket; local `spctl`/`stapler` on this agent host hit a Launch Services subsystem error (even for Calculator.app), so clean-Mac Gatekeeper open remains a manual confirm; Windows/Linux sidecars remain release work |
 | Storage discipline | No persistent diagnostic logs by default; app-owned logs are pruned oldest-first to an aggregate 100 MiB ceiling at startup, native output is bounded/truncated, and native source/toolchain build directories are unique temporary inputs removed on success or failure |
 
 The authoritative step-by-step ledger is [TASKS.md](./TASKS.md). Durable contributor rules are in [AGENTS.md](./AGENTS.md).
@@ -276,60 +276,106 @@ Local smoke packaging stays ad-hoc and does not contact Apple:
 bun run package:dir
 ```
 
-Distribution packaging signs with **Developer ID Application**, enables hardened runtime, submits to Apple notarization via `notarytool`, and staples the ticket when credentials are available:
+Distribution packaging signs with **Developer ID Application**, enables hardened runtime, submits to Apple notarization via `notarytool`, and staples the ticket when credentials and local stapler/Launch Services are available:
 
 ```bash
+# Build sidecars first for a simulation-capable product artifact
+bun run simulators:build
+bun run voice:build
+
 bun run package:mac
+bun run package:mac:verify
 ```
 
-Artifacts land in `release/` (`dmg` and `zip`). Prerequisites on this machine:
+Artifacts land in `release/` (`dmg` and `zip`). Nested Mach-O under `Contents/Resources/simulators/**` and `voice/**` is signed by electron-builder/`@electron/osx-sign` during the Developer ID pass; the after-pack hook must not ad-hoc overwrite that path (`MAC_RELEASE_SIGN=1` / `CSC_*`).
+
+Prerequisites on the build Mac:
 
 1. Paid [Apple Developer Program](https://developer.apple.com/programs/) membership.
-2. A **Developer ID Application** certificate installed in the login keychain (`security find-identity -v -p codesigning` must list it). Create it in [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/certificates/list) if missing, or export/import a `.p12` and set `CSC_LINK` / `CSC_KEY_PASSWORD`.
-3. One notarization auth method (prefer App Store Connect API key):
+2. A **Developer ID Application** certificate in the login keychain (`security find-identity -v -p codesigning`). Create it in [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/certificates/list), or import a `.p12` via `CSC_LINK` + `CSC_KEY_PASSWORD`.
+3. Working reachability to Apple’s **timestamp** service (`timestamp.apple.com:443`). Without it, `codesign --timestamp` fails with `A timestamp was expected but was not found` and packaging cannot complete a new Developer ID signature.
+4. One notarization auth method (prefer App Store Connect API key):
 
 | Method | Environment variables |
 | --- | --- |
-| App Store Connect API key (recommended) | `APPLE_API_KEY` (path to `AuthKey_….p8`), `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` |
+| App Store Connect API key (recommended) | `APPLE_API_KEY` (filesystem path to `AuthKey_….p8`), `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` |
 | Apple ID + app-specific password | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` |
 | Keychain profile from `notarytool store-credentials` | `APPLE_KEYCHAIN_PROFILE` (optional `APPLE_KEYCHAIN`) |
 
-Optional: `CSC_NAME="Developer ID Application: Your Name (TEAMID)"` if multiple identities exist. `MAC_RELEASE_SIGN=1` is set by `package:mac` so the after-pack hook does not replace the Developer ID signature with ad-hoc signing.
+Optional: `CSC_NAME="Your Name (TEAMID)"` if multiple identities exist. **Do not** prefix `CSC_NAME` with `Developer ID Application:` — electron-builder rejects that form. `MAC_RELEASE_SIGN=1` is set by `package:mac` so the after-pack hook does not replace the Developer ID signature with ad-hoc signing.
+
+If a Developer ID–signed ZIP already exists and only notarization was missing:
+
+```bash
+xcrun notarytool submit "release/Circuit Design Harness-*-arm64-mac.zip" \
+  --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --wait
+xcrun stapler staple "release/mac-arm64/Circuit Design Harness.app"
+xcrun stapler staple "release/Circuit Design Harness-*-arm64.dmg"
+```
 
 Verify after a successful run:
 
 ```bash
+bash scripts/verify-macos-gatekeeper.sh \
+  "release/mac-arm64/Circuit Design Harness.app" \
+  "release/Circuit Design Harness-0.1.0-arm64.dmg"
+
+# equivalent manual commands
 codesign --verify --deep --strict --verbose=2 "release/mac-arm64/Circuit Design Harness.app"
+codesign -dv --verbose=4 "release/mac-arm64/Circuit Design Harness.app" 2>&1 | head
 spctl --assess --type execute --verbose "release/mac-arm64/Circuit Design Harness.app"
 xcrun stapler validate "release/mac-arm64/Circuit Design Harness.app"
 ```
 
-Gatekeeper acceptance on a clean Mac (download the DMG, open without right-click bypass) remains a manual release check.
+#### Proven vs still manual
+
+| Check | Status |
+| --- | --- |
+| Developer ID Application signature + hardened runtime on app + nested sidecars | **Verified** on the v0.1.0 arm64 ZIP (`codesign --verify --deep --strict`) |
+| Apple notary Accept / “Ready for distribution” | **Verified** via `notarytool` (Accepted) |
+| Ticket covers simulators + whisper + helpers | **Verified** via `notarytool log` |
+| `spctl --assess` / `stapler validate` on this agent host | **Blocked locally** by Launch Services (`kLSDataUnavailableErr` / codesign subsystem error; Calculator.app fails the same way here) |
+| Clean Mac download → double-click open without right-click bypass | **Manual** confirm still required |
+
+Unstapled-but-notarized apps can still pass Gatekeeper when the Mac is online (Apple ticket lookup). Stapling remains preferred for offline open and faster assessment.
+
+#### Ad-hoc workaround (not the product path)
+
+Only for unsigned/ad-hoc smoke builds:
+
+```bash
+# right-click the app → Open
+# or:
+xattr -dr com.apple.quarantine "/path/to/Circuit Design Harness.app"
+```
 
 ### GitHub Actions pipelines
 
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
 | [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) | Push/PR to `main`/`master` | `check`, `typecheck`, `test`, `storage:check`, `build` on Ubuntu; ad-hoc `package:dir` smoke on macOS 14 arm64 |
-| [`.github/workflows/release.yml`](./.github/workflows/release.yml) | Tag `v*` or manual `workflow_dispatch` | Runs `quality`, packages macOS arm64 DMG/ZIP, uploads artifacts, and creates a GitHub Release |
+| [`.github/workflows/release.yml`](./.github/workflows/release.yml) | Tag `v*` or manual `workflow_dispatch` | Runs `quality`, packages macOS arm64 DMG/ZIP, labels ad-hoc vs Developer ID/notarized, uploads artifacts, creates a GitHub Release |
 
-Release signing/notarization is optional and only runs when Apple secrets are present (and, for manual runs, when **signed** is enabled):
+Release signing/notarization runs when Apple secrets are present (and, for manual runs, when **signed** is enabled). Tag pushes attempt signing automatically if `CSC_LINK` exists.
 
-| Secret | Purpose |
-| --- | --- |
-| `CSC_LINK` | Base64-encoded Developer ID Application `.p12` |
-| `CSC_KEY_PASSWORD` | Password for that `.p12` |
-| `CSC_NAME` | Optional identity string when multiple certificates exist |
-| `APPLE_API_KEY` | App Store Connect API key PEM (raw or base64) |
-| `APPLE_API_KEY_ID` / `APPLE_API_ISSUER` | API key metadata |
-| or `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID` | Alternative notary auth |
+| Secret | Purpose | Format |
+| --- | --- | --- |
+| `CSC_LINK` | the local Developer ID Application identity | Base64 of the `.p12` (`base64 -i cert.p12 \| pbcopy`) |
+| `CSC_KEY_PASSWORD` | Password for that `.p12` | Plain string |
+| `CSC_NAME` | Optional identity selector | `Your Name (TEAMID)` — **no** `Developer ID Application:` prefix |
+| `APPLE_API_KEY` | App Store Connect API private key | Raw PEM (`-----BEGIN PRIVATE KEY-----`…) **or** base64 of the `.p8` |
+| `APPLE_API_KEY_ID` | Key id | From App Store Connect API key list |
+| `APPLE_API_ISSUER` | Issuer UUID | From App Store Connect → Users and Access → Integrations → App Store Connect API |
+| or `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID` | Alternative notary auth | 10-character Team ID from the membership details page |
 
-Without those secrets the release job still publishes **ad-hoc** DMG/ZIP artifacts suitable for CI smoke—not Gatekeeper distribution.
+Without those secrets the release job still publishes **ad-hoc** DMG/ZIP artifacts suitable for CI smoke—not Gatekeeper distribution. Release notes include an explicit `distribution=` channel and whether simulator/voice sidecars were embedded.
+
+**Sidecar strategy:** `simulator/dist/**` and `voice/dist/**` stay gitignored (large native trees). CI does **not** rebuild them by default (multi-hour macOS native builds). A simulation-capable Gatekeeper release is produced on a Mac that already ran `bun run simulators:build` and `bun run voice:build`, or by restoring those trees into the runner before `package:mac`. CI without sidecars may still publish a signed shell app; notes mark sidecar presence explicitly.
 
 ```bash
 # Tag a release (pushes the v* tag workflow)
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 ## Architecture decisions

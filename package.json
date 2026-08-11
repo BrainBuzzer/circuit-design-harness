@@ -27,6 +27,7 @@
     "test:e2e": "bun run build && playwright test",
     "package:dir": "bun run build && electron-builder --mac dir --publish never --config.mac.identity=null --config.mac.hardenedRuntime=false",
     "package:mac": "bun run build && MAC_RELEASE_SIGN=1 electron-builder --mac --publish never",
+    "package:mac:verify": "bash scripts/verify-macos-gatekeeper.sh \"release/mac-arm64/Circuit Design Harness.app\"",
     "quality": "bun run check && bun run typecheck && bun run test && bun run storage:check && bun run build",
     "storage:check": "node scripts/check-storage-policy.mjs"
   },
@@ -94,7 +95,14 @@
     },
     "files": [
       "out/**/*",
-      "package.json"
+      "package.json",
+      "!**/node_modules/@earendil-works/pi-tui/native/win32/**",
+      "!**/node_modules/@earendil-works/pi-tui/native/darwin/prebuilds/darwin-x64/**",
+      "!**/node_modules/@earendil-works/pi-tui/native/**/build.sh",
+      "!**/node_modules/@earendil-works/pi-tui/native/**/build.mjs",
+      "!**/node_modules/@earendil-works/pi-tui/native/**/src/**",
+      "!**/node_modules/@earendil-works/pi-tui/native/**/*.c",
+      "!**/node_modules/@earendil-works/pi-tui/native/**/*.md"
     ],
     "extraResources": [
       {

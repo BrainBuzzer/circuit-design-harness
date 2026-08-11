@@ -12,6 +12,9 @@ const UNUSED_PERMISSION_KEYS = [
  * Local/dev packages stay ad-hoc. Release packages let electron-builder apply
  * Developer ID + hardened runtime after this hook (and notarize when Apple
  * credentials are present in the environment).
+ *
+ * Never ad-hoc re-sign when MAC_RELEASE_SIGN / CSC_* indicate a Developer ID
+ * path: overwriting nested Mach-O (simulators/, voice/, .node) breaks notarization.
  */
 function shouldAdHocSign(context) {
   if (process.env.MAC_ADHOC_SIGN === "1" || process.env.CSC_IDENTITY_AUTO_DISCOVERY === "false") {
@@ -27,6 +30,7 @@ function shouldAdHocSign(context) {
     return true;
   }
   // A concrete identity string means electron-builder will re-sign for release.
+  // Do not include the "Developer ID Application:" prefix in CSC_NAME — electron-builder rejects it.
   if (typeof identity === "string" && identity.length > 0 && identity !== "-") {
     return false;
   }

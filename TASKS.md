@@ -205,8 +205,10 @@ Acceptance: README, ADRs, target schemas, UI target list, Pi tools, compiler map
 - [x] Run the final AI-first quality/E2E/package smoke: 39 test files/126 tests, production build, 100 MiB log-retention/storage audit, publication schematic/catalog/review-only authority, Electron layout/settings/QR/local+LAN-camera/project-restoration workflows, minimum-window control fit, package creation/direct launch/clean quit, deep signature verification, all 18 voice+simulator manifest hashes, and bundled S3 machine presence.
 - [-] Pin, build, hash-verify, package, and execute the macOS arm64 `whisper.cpp` + multilingual `small-q5_1` bundle; other hosts and representative-speaker qualification remain outstanding.
 - [ ] Build and verify Windows x64 and Linux x64/arm64 simulator sidecars.
-- [-] Wire Developer ID + hardened-runtime + notarytool packaging (`package:mac`, entitlements, after-pack release path); obtain a Developer ID Application certificate, run notarize/staple on this machine, and test Gatekeeper on a clean Mac.
-- [x] Add GitHub Actions CI (quality gates + macOS ad-hoc package smoke) and release pipelines (tag/`workflow_dispatch` → package DMG/ZIP → GitHub Release; optional Apple secrets for signed/notarized builds).
+- [x] Wire Developer ID + hardened-runtime + notarytool packaging (`package:mac`, entitlements, after-pack release path that does not ad-hoc overwrite release signatures, unused native exclusions, `scripts/verify-macos-gatekeeper.sh`).
+- [x] Obtain a Developer ID Application certificate and App Store Connect API notary key; notarize the existing Developer ID arm64 ZIP — Apple status **Accepted** / Ready for distribution; ticket includes nested simulators/voice Mach-O.
+- [-] Local `spctl --assess` + `xcrun stapler validate` on this agent host remain blocked by Launch Services/codesign subsystem errors (reproduced on Calculator.app too); re-run `bun run package:mac:verify` and a clean-Mac double-click open outside the agent when LS works. Fresh `package:mac` re-sign also needs `timestamp.apple.com:443` reachability.
+- [x] Add GitHub Actions CI (quality gates + macOS ad-hoc package smoke) and release pipelines (tag/`workflow_dispatch` → package DMG/ZIP → GitHub Release; optional Apple secrets; explicit ad-hoc vs Developer ID/notarized channel + sidecar presence in notes).
 - [ ] Add installer, update channel, rollback, SBOM, and complete third-party notices.
 
 ## Phase 13 — Release acceptance scenarios
