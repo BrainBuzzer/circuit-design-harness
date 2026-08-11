@@ -1,6 +1,6 @@
 {
   "name": "circuit-design-harness",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "author": "Circuit Design Harness contributors",
   "description": "An AI-assisted electronics design and physical-build workbench powered by Pi.",
@@ -137,7 +137,7 @@
         "from": "voice/wakeword",
         "to": "wakeword",
         "filter": [
-          "hey_eve.onnx"
+          "hey_livekit.onnx"
         ]
       }
     ],

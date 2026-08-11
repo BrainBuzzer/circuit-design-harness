@@ -50,7 +50,7 @@ export class TtsService {
   constructor(
     private readonly resolveModel: ResolveChatterboxModel,
     private readonly sidecarScriptPath: string,
-    private readonly pythonExecutable: string = "python3",
+    private readonly resolvePython: () => string = () => "python3",
     private readonly runCommand: TtsCommandRunner = runTtsCommand,
     private readonly modelId: string = "chatterbox-nano-v1",
   ) {}
@@ -91,7 +91,7 @@ export class TtsService {
       await writeFile(textPath, spokenText, { mode: 0o600, flag: "wx" });
       const exaggeration = clamp(input.exaggeration ?? 0.5, 0, 1);
       const result = await this.runCommand(
-        this.pythonExecutable,
+        this.resolvePython(),
         [
           this.sidecarScriptPath,
           "--model-dir",

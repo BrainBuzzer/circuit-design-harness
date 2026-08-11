@@ -28,7 +28,7 @@ export class WakeWordService {
   constructor(
     private readonly resolveModel: ResolveWakeWordModel,
     private readonly sidecarScriptPath: string,
-    private readonly pythonExecutable: string = "python3",
+    private readonly resolvePython: () => string = () => "python3",
     private readonly onEvent: (event: WakeWordEvent) => void = () => undefined,
   ) {}
 
@@ -110,7 +110,7 @@ export class WakeWordService {
 
     this.ready = false;
     const child = spawn(
-      this.pythonExecutable,
+      this.resolvePython(),
       [
         this.sidecarScriptPath,
         "--model",

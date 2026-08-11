@@ -6,7 +6,7 @@ export const AppPreferencesSchema = z
   .object({
     schemaVersion: z.literal(1),
     wakeWordEnabled: z.boolean(),
-    wakePhrase: z.literal("Eve"),
+    wakePhrase: z.literal("Hey LiveKit"),
     autoCaptureVisualRequests: z.boolean(),
     spokenReplies: z.boolean(),
     voiceTone: z.enum(VOICE_TONES),
@@ -21,7 +21,7 @@ export type AppPreferences = z.infer<typeof AppPreferencesSchema>;
 export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   schemaVersion: 1,
   wakeWordEnabled: false,
-  wakePhrase: "Eve",
+  wakePhrase: "Hey LiveKit",
   autoCaptureVisualRequests: true,
   spokenReplies: false,
   voiceTone: "warm",
@@ -31,6 +31,16 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
 };
 
 export function parseAppPreferences(raw: unknown): AppPreferences {
-  const parsed = AppPreferencesSchema.safeParse(raw);
+  // Migrate pre-LiveKit wake phrase values without rejecting the whole prefs file.
+  const candidate =
+    raw && typeof raw === "object"
+      ? {
+          ...(raw as Record<string, unknown>),
+          ...((raw as { wakePhrase?: unknown }).wakePhrase === "Eve"
+            ? { wakePhrase: "Hey LiveKit" }
+            : {}),
+        }
+      : raw;
+  const parsed = AppPreferencesSchema.safeParse(candidate);
   return parsed.success ? parsed.data : DEFAULT_APP_PREFERENCES;
 }

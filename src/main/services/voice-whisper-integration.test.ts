@@ -105,7 +105,7 @@ function fixtureSources(whisper: Buffer, tts: Buffer): VoiceSources {
       ],
     },
     wakeword: {
-      id: "hey_eve",
+      id: "hey_livekit",
       engine: "livekit-wakeword",
       threshold: 0.5,
       sampleRateHz: 16_000,
@@ -113,8 +113,8 @@ function fixtureSources(whisper: Buffer, tts: Buffer): VoiceSources {
       hopSamples: 1_280,
       files: [
         {
-          relativePath: "hey_eve.onnx",
-          url: "https://example.test/hey_eve.onnx",
+          relativePath: "hey_livekit.onnx",
+          url: "https://example.test/hey_livekit.onnx",
           byteSize: tts.byteLength,
           sha256: createHash("sha256").update(tts).digest("hex"),
         },

@@ -302,9 +302,9 @@ export function AppSidebar({
               <>
                 <PreferenceCheckbox
                   checked={preferences.wakeWordEnabled}
-                  description="Listen locally for “Eve” or “Hey Eve”. The microphone indicator stays visible while enabled."
+                  description="Listen locally for “Hey LiveKit” (trained LiveKit wake-word model). The microphone indicator stays visible while enabled."
                   disabled={settingsBusy}
-                  label="Enable Eve wake word"
+                  label="Enable LiveKit wake word"
                   onChange={(wakeWordEnabled) =>
                     void savePreferences({ ...preferences, wakeWordEnabled })
                   }

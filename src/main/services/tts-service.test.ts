@@ -41,7 +41,7 @@ describe("TtsService", () => {
     const service = new TtsService(
       async () => model,
       "/app/scripts/chatterbox-speak.py",
-      "python3",
+      () => "python3",
       runner,
     );
 
@@ -76,7 +76,7 @@ describe("TtsService", () => {
         sampleRateHz: 24_000,
       }),
       "/app/scripts/chatterbox-speak.py",
-      "python3",
+      () => "python3",
       vi.fn(),
     );
     await expect(service.speak({ text: "   " })).rejects.toThrow(/empty/i);

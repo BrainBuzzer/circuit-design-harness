@@ -29,7 +29,7 @@ describe("VoiceAssetService", () => {
     const sourcesWithWake = fixtureSources(whisperBytes, ttsFiles, wakeBytes);
     const fetchBytes = vi.fn<AssetBytesFetcher>(async (url) => {
       if (url.includes("ggml")) return new Uint8Array(whisperBytes);
-      if (url.includes("hey_eve")) return new Uint8Array(wakeBytes);
+      if (url.includes("hey_livekit")) return new Uint8Array(wakeBytes);
       const match = ttsFiles.find((file) => url.endsWith(file.relativePath));
       if (match) return new Uint8Array(match.bytes);
       throw new Error(`unexpected url ${url}`);
@@ -58,10 +58,10 @@ describe("VoiceAssetService", () => {
     expect(chatterbox?.modelDir).toContain(`${path.sep}chatterbox`);
     expect(chatterbox?.variant).toBe("nano");
     const wake = await service.resolveWakeWordModel();
-    expect(wake?.modelPath).toContain("hey_eve.onnx");
-    expect(service.getStatus().allReady).toBe(true);
+    expect(wake?.modelPath).toContain("hey_livekit.onnx");
+    expect(service.getStatus().modelsReady).toBe(true);
     expect(statuses.some((status) => status.whisper.downloading)).toBe(true);
-    expect(statuses.at(-1)?.allReady).toBe(true);
+    expect(statuses.at(-1)?.modelsReady).toBe(true);
   });
 
   it("rejects tampered hashes and leaves readiness false", async () => {
@@ -99,7 +99,7 @@ describe("VoiceAssetService", () => {
       await writeFile(path.join(root, "assets", "chatterbox", file.relativePath), file.bytes);
     }
     await mkdir(path.join(root, "assets", "wakeword"), { recursive: true });
-    await writeFile(path.join(root, "assets", "wakeword", "hey_eve.onnx"), wakeBytes);
+    await writeFile(path.join(root, "assets", "wakeword", "hey_livekit.onnx"), wakeBytes);
 
     const fetchBytes = vi.fn<AssetBytesFetcher>(async () => {
       throw new Error("network should not be used");
@@ -112,7 +112,7 @@ describe("VoiceAssetService", () => {
     });
     await service.ensureAssets();
     expect(fetchBytes).not.toHaveBeenCalled();
-    expect(service.getStatus().allReady).toBe(true);
+    expect(service.getStatus().modelsReady).toBe(true);
   });
 });
 
@@ -154,7 +154,7 @@ function fixtureSources(
       })),
     },
     wakeword: {
-      id: "hey_eve",
+      id: "hey_livekit",
       engine: "livekit-wakeword",
       threshold: 0.5,
       sampleRateHz: 16_000,
@@ -162,8 +162,8 @@ function fixtureSources(
       hopSamples: 1_280,
       files: [
         {
-          relativePath: "hey_eve.onnx",
-          url: "https://example.test/hey_eve.onnx",
+          relativePath: "hey_livekit.onnx",
+          url: "https://example.test/hey_livekit.onnx",
           byteSize: wakeBytes.byteLength,
           sha256: sha(wakeBytes),
         },

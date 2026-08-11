@@ -32,7 +32,7 @@ vi.mock("node:child_process", () => {
       });
       // Defer ready line so start() attaches listeners first.
       queueMicrotask(() => {
-        child.stdout.emit("data", `${JSON.stringify({ type: "ready", model: "hey_eve" })}\n`);
+        child.stdout.emit("data", `${JSON.stringify({ type: "ready", model: "hey_livekit" })}\n`);
       });
       return child;
     }),
@@ -62,15 +62,15 @@ describe("WakeWordService", () => {
     const events: unknown[] = [];
     const service = new WakeWordService(
       async () => ({
-        modelPath: "/assets/wakeword/hey_eve.onnx",
-        modelId: "hey_eve",
+        modelPath: "/assets/wakeword/hey_livekit.onnx",
+        modelId: "hey_livekit",
         threshold: 0.5,
         sampleRateHz: 16_000,
         windowSamples: 32_000,
         hopSamples: 1_280,
       }),
       "/app/scripts/wakeword-detect.py",
-      "python3",
+      () => "python3",
       (event) => events.push(event),
     );
 
@@ -84,7 +84,11 @@ describe("WakeWordService", () => {
   });
 
   it("rejects start when the wake-word model is not ready", async () => {
-    const service = new WakeWordService(async () => undefined, "/app/scripts/wakeword-detect.py");
+    const service = new WakeWordService(
+      async () => undefined,
+      "/app/scripts/wakeword-detect.py",
+      () => "python3",
+    );
     await expect(service.start()).rejects.toThrow(/not ready/i);
   });
 });

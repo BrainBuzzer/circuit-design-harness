@@ -12,23 +12,42 @@ export interface TranscriptionResult {
 
 export interface VoiceAssetComponentStatus {
   readonly kind: "whisper_model" | "chatterbox_tts" | "wakeword_model";
+  readonly label: string;
   readonly ready: boolean;
   readonly downloading: boolean;
   readonly error?: string | undefined;
   readonly bytesDownloaded?: number | undefined;
   readonly bytesTotal?: number | undefined;
+  /** 0–100 when sizes are known */
+  readonly percent?: number | undefined;
+  readonly currentFile?: string | undefined;
+  readonly message?: string | undefined;
+}
+
+export interface VoiceRuntimeStatus {
+  readonly ready: boolean;
+  readonly installing: boolean;
+  readonly pythonPath?: string | undefined;
+  readonly message: string;
+  readonly packages: readonly string[];
+  readonly logTail: string;
+  readonly error?: string | undefined;
 }
 
 export interface VoiceAssetStatus {
   readonly whisper: VoiceAssetComponentStatus;
   readonly chatterbox: VoiceAssetComponentStatus;
   readonly wakeword: VoiceAssetComponentStatus;
+  readonly python: VoiceRuntimeStatus;
   readonly allReady: boolean;
+  /** One-line human summary for banners */
+  readonly summary: string;
 }
 
 export interface WakeWordDetectionEvent {
   readonly name: string;
   readonly confidence: number;
+  readonly source: "livekit" | "whisper_fallback";
 }
 
 export interface PushWakeWordAudioInput {

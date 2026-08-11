@@ -80,19 +80,20 @@
     ]
   },
   "wakeword": {
-    "id": "hey_eve",
+    "id": "hey_livekit",
     "engine": "livekit-wakeword",
     "repository": "https://github.com/livekit/livekit-wakeword",
+    "phrase": "Hey LiveKit",
     "threshold": 0.5,
     "sampleRateHz": 16000,
     "windowSamples": 32000,
     "hopSamples": 1280,
     "files": [
       {
-        "relativePath": "hey_eve.onnx",
-        "url": "https://github.com/livekit/livekit-wakeword/releases/download/v0.1.0/hey_eve.onnx",
-        "byteSize": 6410,
-        "sha256": "6c1dbbfcc04b9ec42b9897392dbf1fb18d8f9e0b0902c5645a500cea235831af"
+        "relativePath": "hey_livekit.onnx",
+        "url": "https://raw.githubusercontent.com/livekit/livekit-wakeword/main/examples/resources/hey_livekit.onnx",
+        "byteSize": 953357,
+        "sha256": "8bd634fb7acf1e52d06307fb8f460abf2c7a40e561fb4532fc56e087e0246f62"
       }
     ]
   }

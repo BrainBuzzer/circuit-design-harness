@@ -18,8 +18,8 @@ export type EveWakeState =
   | "error";
 
 /**
- * Eve wake control using LiveKit wake-word ONNX detection for the trigger,
- * then a single Whisper transcription only for the follow-up command segment.
+ * Wake control using the trained LiveKit hey_livekit ONNX classifier
+ * (LiveKit wakeword). On detection, records one command segment and runs Whisper once.
  */
 export function useEveWakeWord({
   enabled,
@@ -33,7 +33,7 @@ export function useEveWakeWord({
   readonly onCommand: (command: string) => Promise<void>;
 }): { readonly state: EveWakeState; readonly status: string } {
   const [state, setState] = useState<EveWakeState>("off");
-  const [status, setStatus] = useState("Eve wake word is off");
+  const [status, setStatus] = useState("Wake word is off");
   const onCommandRef = useRef(onCommand);
   const handlingDetectionRef = useRef(false);
 
@@ -46,8 +46,8 @@ export function useEveWakeWord({
       setState("off");
       setStatus(
         enabled
-          ? "Eve is paused while the assistant or microphone is active"
-          : "Eve wake word is off",
+          ? "Wake word is paused while the assistant or microphone is active"
+          : "Wake word is off",
       );
       void window.circuitHarness.stopWakeWord();
       return;
@@ -82,9 +82,16 @@ export function useEveWakeWord({
         window.setTimeout(resolve, ms);
       });
 
+    const isAssetUnavailable = (reason: unknown): boolean => {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      return /whisper runtime is unavailable|voice assets are still downloading|wake-word model is not ready|failed verification|livekit-wakeword is not installed|Python voice runtime/i.test(
+        message,
+      );
+    };
+
     const recordCommandSegment = async (): Promise<Blob> => {
       if (!stream || disposed) {
-        throw new Error("Eve microphone session is no longer active.");
+        throw new Error("Wake-word microphone session is no longer active.");
       }
       const chunks: Blob[] = [];
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -102,7 +109,7 @@ export function useEveWakeWord({
         });
         recorder.addEventListener("error", () => {
           window.clearTimeout(timer);
-          reject(new Error("Eve could not record the command segment."));
+          reject(new Error("Could not record the command segment."));
         });
         recorder.addEventListener("stop", () => {
           window.clearTimeout(timer);
@@ -112,53 +119,38 @@ export function useEveWakeWord({
       });
     };
 
-    const transcribeCommand = async (blob: Blob): Promise<string> => {
-      const wavBytes = await encodedAudioBlobToWav(blob);
-      const result = await window.circuitHarness.transcribeAudio({
-        projectId,
-        wavBytes,
-        durationMs: COMMAND_SEGMENT_MS,
-      });
-      return result.text.trim();
-    };
-
-    const isAssetUnavailable = (reason: unknown): boolean => {
-      const message = reason instanceof Error ? reason.message : String(reason);
-      return /whisper runtime is unavailable|voice assets are still downloading|wake-word model is not ready|failed verification|livekit-wakeword is not installed/i.test(
-        message,
-      );
-    };
-
-    const handleDetection = async (confidence: number): Promise<void> => {
-      if (disposed || handlingDetectionRef.current) {
-        return;
-      }
+    const handleWake = async (confidence: number): Promise<void> => {
+      if (disposed || handlingDetectionRef.current) return;
       handlingDetectionRef.current = true;
       try {
         setState("command_listening");
         setStatus(
-          `Eve heard the wake word (${(confidence * 100).toFixed(0)}%) — listening for your request…`,
+          `“Hey LiveKit” detected (${(confidence * 100).toFixed(0)}%) — listening for your request…`,
         );
-        // Pause wake scoring while we capture the command to avoid re-triggers.
         void window.circuitHarness.stopWakeWord();
-        const command = await transcribeCommand(await recordCommandSegment());
+        const commandBlob = await recordCommandSegment();
+        const wavBytes = await encodedAudioBlobToWav(commandBlob);
+        const result = await window.circuitHarness.transcribeAudio({
+          projectId,
+          wavBytes,
+          durationMs: COMMAND_SEGMENT_MS,
+        });
+        const command = result.text.trim();
         if (command && !disposed) {
           setState("processing");
-          setStatus(`Eve heard: “${command.slice(0, 80)}”`);
+          setStatus(`Heard: “${command.slice(0, 80)}”`);
           await onCommandRef.current(command);
         }
         if (!disposed) {
           setState("listening");
-          setStatus("Listening locally for “Eve” / “Hey Eve” (LiveKit wake word)");
+          setStatus("Listening for “Hey LiveKit” (LiveKit wake word)");
           await window.circuitHarness.startWakeWord();
         }
       } catch (reason) {
         if (disposed) return;
         if (isAssetUnavailable(reason)) {
           setState("waiting_assets");
-          setStatus(
-            "Eve is waiting for local voice assets (wake word / Whisper)… will retry automatically.",
-          );
+          setStatus("Waiting for voice assets / Python runtime… retrying.");
           void window.circuitHarness.ensureVoiceAssets().catch(() => undefined);
           await sleep(unavailableBackoffMs);
           unavailableBackoffMs = Math.min(unavailableBackoffMs * 1.5, MAX_UNAVAILABLE_BACKOFF_MS);
@@ -166,14 +158,14 @@ export function useEveWakeWord({
             try {
               await window.circuitHarness.startWakeWord();
               setState("listening");
-              setStatus("Listening locally for “Eve” / “Hey Eve” (LiveKit wake word)");
+              setStatus("Listening for “Hey LiveKit” (LiveKit wake word)");
             } catch {
-              // stay waiting
+              // remain waiting
             }
           }
         } else {
           setState("error");
-          setStatus(reason instanceof Error ? reason.message : "Eve voice control failed.");
+          setStatus(reason instanceof Error ? reason.message : "Wake word control failed.");
         }
       } finally {
         handlingDetectionRef.current = false;
@@ -191,12 +183,11 @@ export function useEveWakeWord({
         pcm16[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
       }
       try {
-        // Structured-clone Int16Array across IPC as a plain number array.
         await window.circuitHarness.pushWakeWordAudio({ pcm16: Array.from(pcm16) });
       } catch (reason) {
         if (!disposed && isAssetUnavailable(reason)) {
           setState("waiting_assets");
-          setStatus("Eve is waiting for the LiveKit wake-word model…");
+          setStatus("Waiting for the LiveKit wake-word runtime…");
           void window.circuitHarness.ensureVoiceAssets().catch(() => undefined);
         }
       }
@@ -205,7 +196,7 @@ export function useEveWakeWord({
     const run = async (): Promise<void> => {
       try {
         setState("requesting");
-        setStatus("Requesting microphone access for Eve…");
+        setStatus("Requesting microphone access…");
         await window.circuitHarness.authorizeMicrophone();
         void window.circuitHarness.ensureVoiceAssets().catch(() => undefined);
         try {
@@ -213,9 +204,7 @@ export function useEveWakeWord({
         } catch (reason) {
           if (isAssetUnavailable(reason)) {
             setState("waiting_assets");
-            setStatus(
-              "Eve is waiting for the LiveKit wake-word model download… will retry automatically.",
-            );
+            setStatus("Installing/downloading LiveKit wake-word runtime… will retry.");
             await sleep(unavailableBackoffMs);
             if (disposed) return;
             await window.circuitHarness.startWakeWord();
@@ -229,9 +218,7 @@ export function useEveWakeWord({
           video: false,
         });
         audioContext = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
-        // Some browsers ignore the requested rate; we still treat buffer as ~16 kHz-ish.
         source = audioContext.createMediaStreamSource(stream);
-        // ScriptProcessor is deprecated but widely available without worklet packaging.
         processor = audioContext.createScriptProcessor(HOP_SAMPLES, 1, 1);
         processor.onaudioprocess = (event) => {
           if (disposed || handlingDetectionRef.current) return;
@@ -252,18 +239,18 @@ export function useEveWakeWord({
         processor.connect(audioContext.destination);
 
         setState("listening");
-        setStatus("Listening locally for “Eve” / “Hey Eve” (LiveKit wake word)");
+        setStatus("Listening for “Hey LiveKit” (trained LiveKit model)");
       } catch (reason) {
         if (!disposed) {
           setState("error");
-          setStatus(reason instanceof Error ? reason.message : "Eve voice control failed.");
+          setStatus(reason instanceof Error ? reason.message : "Wake word control failed.");
         }
         stopMic();
       }
     };
 
     const unsubscribe = window.circuitHarness.onWakeWordDetection((event) => {
-      void handleDetection(event.confidence);
+      void handleWake(event.confidence);
     });
 
     void run();
@@ -277,12 +264,9 @@ export function useEveWakeWord({
   return { state, status };
 }
 
-/**
- * Kept for transcript-based tools/tests (camera routing phrases). LiveKit ONNX
- * handles continuous wake detection; this only strips a spoken Eve prefix.
- */
+/** Strip a spoken LiveKit wake prefix from a command transcript (optional cleanup). */
 export function extractEveCommand(transcript: string): string | undefined {
-  const match = /\b(?:hey\s+)?eve\b[\s,.:;!?-]*/i.exec(transcript);
+  const match = /\b(?:hey\s+)?(?:livekit|eve)\b[\s,.:;!?-]*/i.exec(transcript);
   if (!match) {
     return undefined;
   }

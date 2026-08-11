@@ -52,7 +52,7 @@ describe("spoken reply pipeline (summary → Chatterbox TTS)", () => {
         sampleRateHz: 24_000,
       }),
       path.join(process.cwd(), "scripts", "chatterbox-speak.py"),
-      "python3",
+      () => "python3",
       runner,
     );
 

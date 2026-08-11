@@ -61,18 +61,22 @@ export type VoiceAssetKind = "whisper_model" | "chatterbox_tts" | "wakeword_mode
 
 export interface VoiceAssetComponentStatus {
   readonly kind: VoiceAssetKind;
+  readonly label: string;
   readonly ready: boolean;
   readonly downloading: boolean;
   readonly error?: string | undefined;
   readonly bytesDownloaded?: number | undefined;
   readonly bytesTotal?: number | undefined;
+  readonly percent?: number | undefined;
+  readonly currentFile?: string | undefined;
+  readonly message?: string | undefined;
 }
 
-export interface VoiceAssetStatus {
+export interface VoiceModelAssetsStatus {
   readonly whisper: VoiceAssetComponentStatus;
   readonly chatterbox: VoiceAssetComponentStatus;
   readonly wakeword: VoiceAssetComponentStatus;
-  readonly allReady: boolean;
+  readonly modelsReady: boolean;
 }
 
 export interface LocalWhisperPaths {
@@ -110,7 +114,7 @@ export interface VoiceAssetServiceOptions {
   /** Optional packaged/dev fallback for the LiveKit/openWakeWord classifier ONNX. */
   readonly resolvePackagedWakewordModel?: () => Promise<string | undefined>;
   readonly fetchBytes?: AssetBytesFetcher;
-  readonly onStatus?: ((status: VoiceAssetStatus) => void) | undefined;
+  readonly onStatus?: ((status: VoiceModelAssetsStatus) => void) | undefined;
   readonly now?: () => number;
 }
 
@@ -120,7 +124,7 @@ export interface VoiceAssetServiceOptions {
  */
 export class VoiceAssetService {
   private readonly fetchBytes: AssetBytesFetcher;
-  private readonly onStatus: ((status: VoiceAssetStatus) => void) | undefined;
+  private readonly onStatus: ((status: VoiceModelAssetsStatus) => void) | undefined;
   private readonly now: () => number;
   private readonly whisperState: MutableComponentState;
   private readonly chatterboxState: MutableComponentState;
@@ -134,27 +138,31 @@ export class VoiceAssetService {
     this.now = options.now ?? Date.now;
     this.whisperState = {
       kind: "whisper_model",
+      label: "Whisper STT model",
       ready: false,
       downloading: false,
     };
     this.chatterboxState = {
       kind: "chatterbox_tts",
+      label: "Chatterbox TTS weights",
       ready: false,
       downloading: false,
     };
     this.wakewordState = {
       kind: "wakeword_model",
+      label: "LiveKit wake-word model",
       ready: false,
       downloading: false,
     };
   }
 
-  getStatus(): VoiceAssetStatus {
+  getStatus(): VoiceModelAssetsStatus {
     return {
-      whisper: { ...this.whisperState },
-      chatterbox: { ...this.chatterboxState },
-      wakeword: { ...this.wakewordState },
-      allReady: this.whisperState.ready && this.chatterboxState.ready && this.wakewordState.ready,
+      whisper: toPublicComponent(this.whisperState),
+      chatterbox: toPublicComponent(this.chatterboxState),
+      wakeword: toPublicComponent(this.wakewordState),
+      modelsReady:
+        this.whisperState.ready && this.chatterboxState.ready && this.wakewordState.ready,
     };
   }
 
@@ -370,6 +378,8 @@ export class VoiceAssetService {
     state.error = undefined;
     state.bytesDownloaded = 0;
     state.bytesTotal = file.byteSize;
+    state.currentFile = file.relativePath;
+    state.message = `Downloading ${file.relativePath}…`;
     this.emitStatus();
     const temporaryPath = `${targetPath}.partial-${this.now()}`;
     try {
@@ -377,6 +387,7 @@ export class VoiceAssetService {
       const bytes = await this.fetchBytes(file.url, this.abort.signal, (received, total) => {
         state.bytesDownloaded = received;
         state.bytesTotal = total ?? file.byteSize;
+        state.message = `Downloading ${file.relativePath} (${formatBytes(received)} / ${formatBytes(state.bytesTotal)})…`;
         this.emitStatus();
       });
       if (bytes.byteLength !== file.byteSize) {
@@ -392,13 +403,15 @@ export class VoiceAssetService {
       }
       await writeFile(temporaryPath, bytes, { mode: 0o600, flag: "wx" });
       await rename(temporaryPath, targetPath);
-      if (state.kind === "whisper_model") {
+      if (state.kind === "whisper_model" || state.kind === "wakeword_model") {
         state.ready = true;
       }
       state.error = undefined;
+      state.message = `Verified ${file.relativePath}`;
     } catch (reason) {
       state.ready = false;
       state.error = reason instanceof Error ? reason.message : String(reason);
+      state.message = state.error;
       await rm(temporaryPath, { force: true });
     } finally {
       state.downloading = false;
@@ -476,12 +489,54 @@ export class VoiceAssetService {
 
 type MutableComponentState = {
   kind: VoiceAssetKind;
+  label: string;
   ready: boolean;
   downloading: boolean;
   error?: string | undefined;
   bytesDownloaded?: number | undefined;
   bytesTotal?: number | undefined;
+  currentFile?: string | undefined;
+  message?: string | undefined;
 };
+
+function toPublicComponent(state: MutableComponentState): VoiceAssetComponentStatus {
+  const bytesDownloaded = state.bytesDownloaded;
+  const bytesTotal = state.bytesTotal;
+  const percent =
+    typeof bytesDownloaded === "number" && typeof bytesTotal === "number" && bytesTotal > 0
+      ? Math.min(100, Math.round((bytesDownloaded / bytesTotal) * 100))
+      : state.ready
+        ? 100
+        : undefined;
+  return {
+    kind: state.kind,
+    label: state.label,
+    ready: state.ready,
+    downloading: state.downloading,
+    error: state.error,
+    bytesDownloaded,
+    bytesTotal,
+    percent,
+    currentFile: state.currentFile,
+    message:
+      state.message ??
+      (state.ready
+        ? `${state.label} ready`
+        : state.downloading
+          ? `Downloading ${state.currentFile ?? state.label}…`
+          : state.error
+            ? state.error
+            : `${state.label} not ready`),
+  };
+}
+
+function formatBytes(bytes: number | undefined): string {
+  if (bytes === undefined) return "?";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
+}
 
 export async function loadVoiceSources(sourcesPath: string): Promise<VoiceSources> {
   const raw = JSON.parse(await readFile(sourcesPath, "utf8")) as unknown;

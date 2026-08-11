@@ -14,9 +14,9 @@ Large Whisper and Chatterbox weight files are **not** packaged in the app instal
 
 Push-to-talk records for at most 60 seconds. Its transcript remains editable and is never auto-sent.
 
-The optional Eve mode uses **[LiveKit wakeword](https://github.com/livekit/livekit-wakeword)** (openWakeWord-compatible ONNX classifier) for continuous local wake detection—not continuous Whisper transcription. The renderer streams 16 kHz PCM frames to a main-process Python sidecar (`scripts/wakeword-detect.py` → `livekit.wakeword.WakeWordModel`). On detection of the pinned `hey_eve` classifier, Eve records one bounded eight-second command segment and runs Whisper **once** for that command. Eve is off by default, visibly enabled, paused while Pi, push-to-talk, or TTS is active, and torn down when the active project changes. If wake-word or Whisper assets are still downloading, Eve enters a recoverable waiting state and retries.
+Wake mode uses the **trained [LiveKit wakeword](https://github.com/livekit/livekit-wakeword) `hey_livekit` classifier** for continuous local wake detection—not continuous Whisper transcription. The phrase is **“Hey LiveKit”**. The renderer streams 16 kHz PCM frames to a main-process Python sidecar (`scripts/wakeword-detect.py` → `livekit.wakeword.WakeWordModel`). On detection, the app records one bounded eight-second command segment and runs Whisper **once** for that command. Wake listening is off by default, visibly enabled, paused while Pi, push-to-talk, or TTS is active, and torn down when the active project changes. If wake-word or Whisper assets are still downloading, the UI enters a recoverable waiting state and retries.
 
-The `hey_eve.onnx` classifier is acquired into userData on first start (hash-verified). A training config lives at `voice/wakeword/hey_eve.yaml` for producing a production-quality model with `livekit-wakeword run`; replace the placeholder ONNX and update `voice/sources.json` pins after training.
+The trained `hey_livekit.onnx` (from the livekit-wakeword examples) is acquired into userData on first start (hash-verified). Source pin: `voice/sources.json` + optional local bootstrap from `voice/wakeword/hey_livekit.onnx`.
 
 ### Spoken replies (Chatterbox)
 
@@ -34,7 +34,7 @@ Spoken replies use **Resemble AI Chatterbox** ([github.com/resemble-ai/chatterbo
 
 - Unit tests cover WAV/content/duration/project guards, cancellation, runtime absence, download+hash verify (including tamper rejection), wake-phrase segmentation, Eve asset-wait recovery, speech-summary transforms on electronics-heavy fixtures, Chatterbox TTS readiness gating and summary→sidecar pipeline, preference persistence, and per-file voice-bundle verification when the large Whisper model is absent from the package.
 - Representative Indian-accent speakers, Galaxy S23 microphones, noisy rooms, TTS echo, latency, and emotional voice quality remain real-device qualification work. Do not describe them as verified.
-- Host must provide `python3` with `chatterbox-tts` (and torch/torchaudio/soundfile) for synthesis; missing Python deps surface as actionable synthesis errors after weights are ready. Full multi-GB weight downloads are not required to pass automated gates—fixtures + injectable fetch prove the contract.
+- On first start the app creates a userData Python venv and installs `livekit-wakeword` + `chatterbox-tts` (and torch) with visible log progress. Model weights and package install status stream into a workbench banner. Host `python3` is only used to create the venv.
 
 ## Consequences
 

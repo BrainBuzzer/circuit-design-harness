@@ -14,13 +14,15 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe("Eve wake phrase helpers", () => {
-  it("segments direct Eve and Hey Eve requests for command transcripts", () => {
-    expect(removeEveWakePhrase("Eve, take a look at the camera")).toBe("take a look at the camera");
-    expect(removeEveWakePhrase("hey eve check this circuit")).toBe("check this circuit");
+describe("LiveKit wake phrase helpers", () => {
+  it("segments LiveKit / legacy Eve prefixes from command transcripts", () => {
+    expect(removeEveWakePhrase("Hey LiveKit, take a look at the camera")).toBe(
+      "take a look at the camera",
+    );
+    expect(removeEveWakePhrase("hey livekit check this circuit")).toBe("check this circuit");
     expect(removeEveWakePhrase("This sentence has no assistant name")).toBeUndefined();
-    expect(extractEveCommand("Eve")).toBe("");
-    expect(extractEveCommand("Hey Eve, check the resistor")).toBe("check the resistor");
+    expect(extractEveCommand("Hey LiveKit")).toBe("");
+    expect(extractEveCommand("Hey LiveKit, check the resistor")).toBe("check the resistor");
   });
 
   it("starts LiveKit wake detection and routes a command after detection", async () => {
@@ -72,15 +74,40 @@ describe("Eve wake phrase helpers", () => {
       value: FakeMediaRecorder,
     });
 
-    let detectionListener: ((event: { name: string; confidence: number }) => void) | undefined;
+    let detectionListener:
+      | ((event: { name: string; confidence: number; source?: "livekit" | "whisper_fallback" }) => void)
+      | undefined;
     const startWakeWord = vi.fn(async () => undefined);
     const stopWakeWord = vi.fn(async () => undefined);
     const pushWakeWordAudio = vi.fn(async () => undefined);
     const ensureVoiceAssets = vi.fn(async () => ({
-      whisper: { kind: "whisper_model", ready: true, downloading: false },
-      chatterbox: { kind: "chatterbox_tts", ready: true, downloading: false },
-      wakeword: { kind: "wakeword_model", ready: true, downloading: false },
+      whisper: {
+        kind: "whisper_model" as const,
+        label: "Whisper",
+        ready: true,
+        downloading: false,
+      },
+      chatterbox: {
+        kind: "chatterbox_tts" as const,
+        label: "Chatterbox",
+        ready: true,
+        downloading: false,
+      },
+      wakeword: {
+        kind: "wakeword_model" as const,
+        label: "Wake",
+        ready: true,
+        downloading: false,
+      },
+      python: {
+        ready: true,
+        installing: false,
+        message: "ready",
+        packages: [],
+        logTail: "",
+      },
       allReady: true,
+      summary: "Voice ready",
     }));
     const authorizeMicrophone = vi.fn(async () => undefined);
     const transcribeAudio = vi.fn(async () => ({
@@ -99,7 +126,13 @@ describe("Eve wake phrase helpers", () => {
         ensureVoiceAssets,
         transcribeAudio,
         cancelTranscription,
-        onWakeWordDetection: (listener: (event: { name: string; confidence: number }) => void) => {
+        onWakeWordDetection: (
+          listener: (event: {
+            name: string;
+            confidence: number;
+            source?: "livekit" | "whisper_fallback";
+          }) => void,
+        ) => {
           detectionListener = listener;
           return () => {
             detectionListener = undefined;
@@ -121,7 +154,7 @@ describe("Eve wake phrase helpers", () => {
     expect(getUserMedia).toHaveBeenCalledOnce();
 
     await act(async () => {
-      detectionListener?.({ name: "hey_eve", confidence: 0.91 });
+      detectionListener?.({ name: "hey_livekit", confidence: 0.91, source: "livekit" });
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(8_000);
@@ -168,10 +201,33 @@ describe("Eve wake phrase helpers", () => {
         stopWakeWord: vi.fn(async () => undefined),
         pushWakeWordAudio: vi.fn(async () => undefined),
         ensureVoiceAssets: vi.fn(async () => ({
-          whisper: { kind: "whisper_model", ready: false, downloading: true },
-          chatterbox: { kind: "chatterbox_tts", ready: false, downloading: false },
-          wakeword: { kind: "wakeword_model", ready: false, downloading: true },
+          whisper: {
+            kind: "whisper_model" as const,
+            label: "Whisper",
+            ready: false,
+            downloading: true,
+          },
+          chatterbox: {
+            kind: "chatterbox_tts" as const,
+            label: "Chatterbox",
+            ready: false,
+            downloading: false,
+          },
+          wakeword: {
+            kind: "wakeword_model" as const,
+            label: "Wake",
+            ready: false,
+            downloading: true,
+          },
+          python: {
+            ready: false,
+            installing: true,
+            message: "installing",
+            packages: [],
+            logTail: "",
+          },
           allReady: false,
+          summary: "Voice setup in progress",
         })),
         transcribeAudio: vi.fn(),
         cancelTranscription: vi.fn(async () => undefined),

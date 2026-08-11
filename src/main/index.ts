@@ -11,6 +11,7 @@ import { AppPreferencesSchema } from "@domain/preferences";
 import { ProjectTitleSchema } from "@domain/project";
 import { DeclarativeSimulationEventSchema } from "@domain/simulation-model-runtime";
 import { APP_VERSION, type AppInfo } from "@shared/app-contract";
+import type { VoiceAssetStatus } from "@shared/voice-contract";
 import {
   app,
   BrowserWindow,
@@ -44,7 +45,12 @@ import { RemoteCameraService } from "./services/remote-camera-service";
 import { SimulationModelService } from "./services/simulation-model-service";
 import { TranscriptionService } from "./services/transcription-service";
 import { TtsService } from "./services/tts-service";
-import { loadVoiceSources, VoiceAssetService } from "./services/voice-asset-service";
+import {
+  loadVoiceSources,
+  VoiceAssetService,
+  type VoiceModelAssetsStatus,
+} from "./services/voice-asset-service";
+import { VoiceRuntimeService, type VoiceRuntimeStatus } from "./services/voice-runtime-service";
 import { WakeWordService } from "./services/wake-word-service";
 
 const APP_SCHEME = "circuit-harness";
@@ -228,6 +234,9 @@ function registerIpcHandlers(
   voiceAssetService: VoiceAssetService,
   ttsService: TtsService,
   wakeWordService: WakeWordService,
+  voiceRuntimeService: VoiceRuntimeService,
+  getCombinedVoiceStatus: () => VoiceAssetStatus,
+  ensureVoiceSetup: () => Promise<VoiceAssetStatus>,
 ): void {
   ipcMain.handle("app:get-info", (event): AppInfo => {
     assertTrustedIpc(event);
@@ -745,16 +754,14 @@ function registerIpcHandlers(
 
   ipcMain.handle("voice:asset-status", (event) => {
     assertTrustedIpc(event);
-    return voiceAssetService.getStatus();
+    return getCombinedVoiceStatus();
   });
 
   ipcMain.handle("voice:ensure-assets", async (event) => {
     assertTrustedIpc(event);
-    await voiceAssetService.ensureAssets();
-    return voiceAssetService.getStatus();
+    return ensureVoiceSetup();
   });
-
-  ipcMain.handle("voice:speak", (event, input: unknown) => {
+  ipcMain.handle("voice:speak", async (event, input: unknown) => {
     assertTrustedIpc(event);
     const parsed = z
       .object({
@@ -762,6 +769,8 @@ function registerIpcHandlers(
         exaggeration: z.number().finite().min(0).max(1).optional(),
       })
       .parse(input);
+    // Ensure Chatterbox Python packages before synthesizing.
+    await voiceRuntimeService.ensureRuntime();
     return ttsService.speak({
       text: parsed.text,
       ...(parsed.exaggeration !== undefined ? { exaggeration: parsed.exaggeration } : {}),
@@ -775,6 +784,8 @@ function registerIpcHandlers(
 
   ipcMain.handle("wake:start", async (event) => {
     assertTrustedIpc(event);
+    // Ensure venv packages (livekit-wakeword) before spawning sidecar.
+    await voiceRuntimeService.ensureRuntime().catch(() => undefined);
     await wakeWordService.start();
   });
 
@@ -860,8 +871,11 @@ let activePiService: PiService | undefined;
 let activeTranscriptionService: TranscriptionService | undefined;
 let activeTtsService: TtsService | undefined;
 let activeVoiceAssetService: VoiceAssetService | undefined;
+let activeVoiceRuntimeService: VoiceRuntimeService | undefined;
 let activeWakeWordService: WakeWordService | undefined;
 let activeLanCameraRelayService: LanCameraRelayService | undefined;
+let lastModelAssets: VoiceModelAssetsStatus | undefined;
+let lastPythonStatus: VoiceRuntimeStatus | undefined;
 
 async function startApplication(): Promise<void> {
   await enforcePersistentLogBudget([app.getPath("logs")]);
@@ -936,6 +950,39 @@ async function startApplication(): Promise<void> {
     ? path.join(process.resourcesPath, "voice-sources.json")
     : path.join(repositoryRoot, "voice", "sources.json");
   const voiceSources = await loadVoiceSources(voiceSourcesPath);
+
+  const getCombinedVoiceStatus = (): VoiceAssetStatus => {
+    const models = lastModelAssets ??
+      activeVoiceAssetService?.getStatus() ?? {
+        whisper: emptyComponent("whisper_model", "Whisper STT model"),
+        chatterbox: emptyComponent("chatterbox_tts", "Chatterbox TTS weights"),
+        wakeword: emptyComponent("wakeword_model", "LiveKit wake-word model"),
+        modelsReady: false,
+      };
+    const python =
+      lastPythonStatus ??
+      activeVoiceRuntimeService?.getStatus() ??
+      ({
+        ready: false,
+        installing: false,
+        message: "Python voice runtime not started.",
+        packages: [],
+        logTail: "",
+      } satisfies VoiceRuntimeStatus);
+    return {
+      whisper: models.whisper,
+      chatterbox: models.chatterbox,
+      wakeword: models.wakeword,
+      python,
+      allReady: models.modelsReady && python.ready,
+      summary: buildVoiceSetupSummary(models, python),
+    };
+  };
+
+  const broadcastVoiceStatus = (): void => {
+    broadcast("voice:asset-status", getCombinedVoiceStatus());
+  };
+
   const voiceAssetService = new VoiceAssetService({
     assetsRoot: path.join(app.getPath("userData"), "voice-assets"),
     sources: voiceSources,
@@ -944,8 +991,8 @@ async function startApplication(): Promise<void> {
       localSimulatorService.resolveVoiceAsset("models/ggml-small-q5_1.bin"),
     resolvePackagedWakewordModel: async () => {
       const candidate = app.isPackaged
-        ? path.join(process.resourcesPath, "wakeword", "hey_eve.onnx")
-        : path.join(repositoryRoot, "voice", "wakeword", "hey_eve.onnx");
+        ? path.join(process.resourcesPath, "wakeword", "hey_livekit.onnx")
+        : path.join(repositoryRoot, "voice", "wakeword", "hey_livekit.onnx");
       try {
         await access(candidate);
         return candidate;
@@ -954,17 +1001,46 @@ async function startApplication(): Promise<void> {
       }
     },
     onStatus: (status) => {
-      broadcast("voice:asset-status", status);
+      lastModelAssets = status;
+      broadcastVoiceStatus();
     },
   });
   activeVoiceAssetService = voiceAssetService;
+  lastModelAssets = voiceAssetService.getStatus();
+
+  const voiceRuntimeService = new VoiceRuntimeService(
+    path.join(app.getPath("userData"), "voice-runtime"),
+    "python3",
+    undefined,
+    (status) => {
+      lastPythonStatus = status;
+      broadcastVoiceStatus();
+    },
+  );
+  activeVoiceRuntimeService = voiceRuntimeService;
+  lastPythonStatus = voiceRuntimeService.getStatus();
+
+  const resolveVoicePython = (): string => voiceRuntimeService.getPythonExecutable() ?? "python3";
+
+  const ensureVoiceSetup = async (): Promise<VoiceAssetStatus> => {
+    await Promise.allSettled([
+      voiceAssetService.ensureAssets(),
+      voiceRuntimeService.ensureRuntime(),
+    ]);
+    lastModelAssets = voiceAssetService.getStatus();
+    lastPythonStatus = voiceRuntimeService.getStatus();
+    const status = getCombinedVoiceStatus();
+    broadcastVoiceStatus();
+    return status;
+  };
+
   const chatterboxSidecarPath = app.isPackaged
     ? path.join(process.resourcesPath, "scripts", "chatterbox-speak.py")
     : path.join(repositoryRoot, "scripts", "chatterbox-speak.py");
   const ttsService = new TtsService(
     () => voiceAssetService.resolveChatterboxModel(),
     chatterboxSidecarPath,
-    "python3",
+    resolveVoicePython,
     undefined,
     voiceSources.tts?.id ?? "chatterbox-nano-v1",
   );
@@ -975,12 +1051,13 @@ async function startApplication(): Promise<void> {
   const wakeWordService = new WakeWordService(
     () => voiceAssetService.resolveWakeWordModel(),
     wakewordSidecarPath,
-    "python3",
+    resolveVoicePython,
     (event) => {
       if (event.type === "detection") {
         broadcast("wake:detection", {
           name: event.name,
           confidence: event.confidence,
+          source: "livekit",
         });
       }
     },
@@ -1013,9 +1090,12 @@ async function startApplication(): Promise<void> {
     voiceAssetService,
     ttsService,
     wakeWordService,
+    voiceRuntimeService,
+    getCombinedVoiceStatus,
+    ensureVoiceSetup,
   );
-  // First-start (and subsequent) model download — models are not installer-packaged.
-  void voiceAssetService.ensureAssets().catch(() => undefined);
+  // First-start: download models + install Python packages; progress streams to UI.
+  void ensureVoiceSetup().catch(() => undefined);
 
   if (projectState.activeProjectId) {
     const projectDirectory = await projectService.getProjectDirectory(projectState.activeProjectId);
@@ -1042,6 +1122,7 @@ app.on("before-quit", () => {
   activeTtsService?.dispose();
   activeWakeWordService?.dispose();
   activeVoiceAssetService?.dispose();
+  activeVoiceRuntimeService = undefined;
   activePiService?.dispose();
   void activeLanCameraRelayService?.stop();
 });
@@ -1054,4 +1135,52 @@ app.on("window-all-closed", () => {
 
 function toErrorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : "An unexpected startup error occurred.";
+}
+
+function emptyComponent(
+  kind: "whisper_model" | "chatterbox_tts" | "wakeword_model",
+  label: string,
+): VoiceAssetStatus["whisper"] {
+  return {
+    kind,
+    label,
+    ready: false,
+    downloading: false,
+    message: `${label} not ready`,
+  };
+}
+
+function buildVoiceSetupSummary(
+  models: VoiceModelAssetsStatus,
+  python: VoiceRuntimeStatus,
+): string {
+  const parts: string[] = [];
+  if (models.whisper.downloading) {
+    parts.push(
+      `Whisper ${models.whisper.percent !== undefined ? `${models.whisper.percent}%` : "downloading"}`,
+    );
+  } else if (!models.whisper.ready) {
+    parts.push(models.whisper.error ? `Whisper error` : "Whisper pending");
+  }
+  if (models.chatterbox.downloading) {
+    parts.push(
+      `Chatterbox ${models.chatterbox.percent !== undefined ? `${models.chatterbox.percent}%` : "downloading"}`,
+    );
+  } else if (!models.chatterbox.ready) {
+    parts.push(models.chatterbox.error ? `Chatterbox error` : "Chatterbox pending");
+  }
+  if (models.wakeword.downloading) {
+    parts.push("Wake-word model downloading");
+  } else if (!models.wakeword.ready) {
+    parts.push(models.wakeword.error ? "Wake-word error" : "Wake-word pending");
+  }
+  if (python.installing) {
+    parts.push(python.message || "Installing Python packages…");
+  } else if (!python.ready) {
+    parts.push(python.error ? "Python runtime error" : "Python runtime pending");
+  }
+  if (parts.length === 0 && models.modelsReady && python.ready) {
+    return "Voice ready: Whisper STT, LiveKit wake word, and Chatterbox TTS.";
+  }
+  return parts.length > 0 ? `Voice setup: ${parts.join(" · ")}` : "Checking voice assets…";
 }

@@ -2,10 +2,18 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_APP_PREFERENCES, parseAppPreferences, VOICE_TONES } from "./preferences";
 
 describe("application preferences", () => {
-  it("defaults to an explicit opt-in wake word with a fixed Eve phrase", () => {
+  it("defaults to an explicit opt-in wake word with a fixed LiveKit phrase", () => {
     expect(parseAppPreferences({})).toEqual(DEFAULT_APP_PREFERENCES);
     expect(DEFAULT_APP_PREFERENCES.wakeWordEnabled).toBe(false);
-    expect(DEFAULT_APP_PREFERENCES.wakePhrase).toBe("Eve");
+    expect(DEFAULT_APP_PREFERENCES.wakePhrase).toBe("Hey LiveKit");
+  });
+  it("migrates legacy Eve wakePhrase to Hey LiveKit", () => {
+    expect(
+      parseAppPreferences({
+        ...DEFAULT_APP_PREFERENCES,
+        wakePhrase: "Eve",
+      }).wakePhrase,
+    ).toBe("Hey LiveKit");
   });
 
   it("accepts every bounded local voice tone", () => {

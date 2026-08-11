@@ -73,6 +73,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { VoiceSetupBanner } from "@/components/voice-setup-banner";
 import { useEveWakeWord } from "@/hooks/use-eve-wake-word";
 import { encodedAudioBlobToWav } from "@/lib/audio";
 
@@ -366,6 +367,7 @@ function ConversationPane({
   const [speechRate, setSpeechRate] = useState(preferences?.speechRate ?? 1);
   const [speechVolume, setSpeechVolume] = useState(preferences?.speechVolume ?? 1);
   const [voiceAssets, setVoiceAssets] = useState<VoiceAssetStatus>();
+  const [voiceSetupBusy, setVoiceSetupBusy] = useState(false);
   const [speechStatus, setSpeechStatus] = useState<string>();
   const [voiceInputState, setVoiceInputState] = useState<
     "idle" | "requesting" | "recording" | "transcribing" | "error"
@@ -491,6 +493,7 @@ function ConversationPane({
   }, [preferences]);
 
   useEffect(() => {
+    setVoiceSetupBusy(true);
     void window.circuitHarness
       .getVoiceAssetStatus()
       .then(setVoiceAssets)
@@ -498,8 +501,18 @@ function ConversationPane({
     void window.circuitHarness
       .ensureVoiceAssets()
       .then(setVoiceAssets)
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setVoiceSetupBusy(false));
     return window.circuitHarness.onVoiceAssetStatus(setVoiceAssets);
+  }, []);
+
+  const retryVoiceSetup = useCallback((): void => {
+    setVoiceSetupBusy(true);
+    void window.circuitHarness
+      .ensureVoiceAssets()
+      .then(setVoiceAssets)
+      .catch(() => undefined)
+      .finally(() => setVoiceSetupBusy(false));
   }, []);
 
   useEffect(() => {
@@ -761,6 +774,7 @@ function ConversationPane({
 
   return (
     <section className="flex size-full min-h-0 flex-col bg-canvas" aria-label="Conversation">
+      <VoiceSetupBanner busy={voiceSetupBusy} onRetry={retryVoiceSetup} status={voiceAssets} />
       <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface/80 px-4 py-3 backdrop-blur-sm">
         <AgentStatusOrb thinking={thinking} speaking={speaking} ready={sessionReady} />
         <div className="min-w-32 flex-1">
@@ -779,7 +793,9 @@ function ConversationPane({
           <ModelSelect projectId={project.id} snapshot={agentSnapshot} onSetModel={onSetModel} />
         )}
         <Button
-          aria-label={wakeWordEnabled ? "Disable Eve wake word" : "Enable Eve wake word"}
+          aria-label={
+            wakeWordEnabled ? "Disable LiveKit wake word" : "Enable LiveKit wake word"
+          }
           aria-pressed={wakeWordEnabled}
           disabled={!preferences}
           onClick={() => {
@@ -794,7 +810,7 @@ function ConversationPane({
           title={eve.status}
           variant={wakeWordEnabled ? "secondary" : "ghost"}
         >
-          <MicIcon /> Eve
+          <MicIcon /> Wake
         </Button>
         <Button
           aria-label={speakReplies ? "Disable spoken replies" : "Enable spoken replies"}
@@ -1297,37 +1313,37 @@ function ConversationPane({
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-md border bg-inset px-3 py-2 text-xs text-ink-2">
-              <p>
-                Whisper STT:{" "}
-                {voiceAssets?.whisper.ready
-                  ? "ready"
-                  : voiceAssets?.whisper.downloading
-                    ? "downloading…"
-                    : voiceAssets?.whisper.error
-                      ? `error — ${voiceAssets.whisper.error}`
-                      : "not ready"}
+              <p className="font-medium text-ink">
+                {voiceAssets?.summary ?? "Checking voice setup…"}
               </p>
+              <p>Whisper STT: {formatVoiceComponent(voiceAssets?.whisper)}</p>
+              <p>Chatterbox TTS: {formatVoiceComponent(voiceAssets?.chatterbox)}</p>
+              <p>LiveKit wake word: {formatVoiceComponent(voiceAssets?.wakeword)}</p>
               <p>
-                Chatterbox TTS:{" "}
-                {voiceAssets?.chatterbox.ready
-                  ? "ready"
-                  : voiceAssets?.chatterbox.downloading
-                    ? "downloading…"
-                    : voiceAssets?.chatterbox.error
-                      ? `error — ${voiceAssets.chatterbox.error}`
-                      : "not ready"}
+                Python runtime:{" "}
+                {voiceAssets?.python.ready
+                  ? `ready (${voiceAssets.python.pythonPath ?? "venv"})`
+                  : voiceAssets?.python.installing
+                    ? `installing… ${voiceAssets.python.message}`
+                    : voiceAssets?.python.error
+                      ? `error — ${voiceAssets.python.error}`
+                      : (voiceAssets?.python.message ?? "not ready")}
               </p>
-              <p>
-                LiveKit wake word:{" "}
-                {voiceAssets?.wakeword.ready
-                  ? "ready"
-                  : voiceAssets?.wakeword.downloading
-                    ? "downloading…"
-                    : voiceAssets?.wakeword.error
-                      ? `error — ${voiceAssets.wakeword.error}`
-                      : "not ready"}
-              </p>
+              {voiceAssets?.python.logTail ? (
+                <pre className="mt-1 max-h-28 overflow-auto rounded bg-white/60 p-1.5 font-mono text-[10px] text-ink-3">
+                  {voiceAssets.python.logTail}
+                </pre>
+              ) : null}
               {speechStatus ? <p className="mt-1 text-ink-3">{speechStatus}</p> : null}
+              <Button
+                className="mt-2"
+                disabled={voiceSetupBusy}
+                onClick={retryVoiceSetup}
+                size="sm"
+                variant="outline"
+              >
+                Retry voice setup
+              </Button>
             </div>
             <label className="grid gap-1.5 text-sm" htmlFor="speech-rate">
               Rate · {speechRate.toFixed(1)}×
@@ -2307,6 +2323,16 @@ function CameraPane({
       </Dialog>
     </section>
   );
+}
+
+function formatVoiceComponent(component: VoiceAssetStatus["whisper"] | undefined): string {
+  if (!component) return "unknown";
+  if (component.ready) return "ready";
+  if (component.downloading) {
+    return `downloading${component.percent !== undefined ? ` ${component.percent}%` : ""}… ${component.message ?? ""}`.trim();
+  }
+  if (component.error) return `error — ${component.error}`;
+  return component.message ?? "not ready";
 }
 
 function toErrorMessage(reason: unknown): string {
