@@ -50,6 +50,11 @@ export interface WakeWordDetectionEvent {
   readonly source: "livekit" | "whisper_fallback";
 }
 
+/** Live classifier scores while listening (for UI feedback only). */
+export interface WakeWordScoresEvent {
+  readonly scores: Readonly<Record<string, number>>;
+}
+
 export interface PushWakeWordAudioInput {
   /** 16 kHz mono PCM samples (Int16 values as numbers for IPC structured clone). */
   readonly pcm16: Int16Array | readonly number[];

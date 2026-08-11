@@ -79,6 +79,11 @@ describe("WakeWordService", () => {
     expect(service.isReady()).toBe(true);
 
     await service.pushPcm16(new Int16Array(1_280));
+    // Concurrent pushes must serialize length-prefixed frames on stdin.
+    await Promise.all([
+      service.pushPcm16(new Int16Array([1, 2, 3])),
+      service.pushPcm16(new Int16Array([4, 5, 6])),
+    ]);
     service.stop();
     expect(service.isRunning()).toBe(false);
   });

@@ -72,6 +72,7 @@ import type {
   TranscriptionResult,
   VoiceAssetStatus,
   WakeWordDetectionEvent,
+  WakeWordScoresEvent,
 } from "./voice-contract";
 
 export const APP_VERSION = "0.2.0";
@@ -169,6 +170,7 @@ export interface CircuitHarnessApi {
   stopWakeWord(): Promise<void>;
   pushWakeWordAudio(input: PushWakeWordAudioInput): Promise<void>;
   onWakeWordDetection(listener: (event: WakeWordDetectionEvent) => void): () => void;
+  onWakeWordScores(listener: (event: WakeWordScoresEvent) => void): () => void;
   saveCameraCapture(input: SaveCameraCaptureInput): Promise<ProjectCapture>;
   getCaptures(projectId: string): Promise<readonly ProjectCapture[]>;
   exportCircuit(projectId: string): Promise<CircuitExportResult>;

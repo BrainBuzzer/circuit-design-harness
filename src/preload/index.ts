@@ -92,6 +92,16 @@ const api: CircuitHarnessApi = {
     ipcRenderer.on("wake:detection", handler);
     return () => ipcRenderer.removeListener("wake:detection", handler);
   },
+  onWakeWordScores: (listener) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: Parameters<typeof listener>[0],
+    ) => {
+      listener(payload);
+    };
+    ipcRenderer.on("wake:scores", handler);
+    return () => ipcRenderer.removeListener("wake:scores", handler);
+  },
   saveCameraCapture: (input) => ipcRenderer.invoke("capture:save", input),
   getCaptures: (projectId) => ipcRenderer.invoke("capture:list", projectId),
   exportCircuit: (projectId) => ipcRenderer.invoke("export:circuit", projectId),

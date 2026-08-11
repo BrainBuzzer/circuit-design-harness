@@ -1060,6 +1060,9 @@ async function startApplication(): Promise<void> {
           confidence: event.confidence,
           source: "livekit",
         });
+      } else if (event.type === "scores") {
+        // Throttled in the renderer status UI; raw scores are small JSON.
+        broadcast("wake:scores", { scores: event.scores });
       }
     },
   );

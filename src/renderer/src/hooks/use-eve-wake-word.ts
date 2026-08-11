@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { encodedAudioBlobToWav } from "@/lib/audio";
+import { downsample, encodedAudioBlobToWav, float32ToPcm16, rmsLevel } from "@/lib/audio";
 
 const COMMAND_SEGMENT_MS = 8_000;
 const TARGET_SAMPLE_RATE = 16_000;
-const WINDOW_SAMPLES = 32_000; // ~2s at 16 kHz for LiveKit/openWakeWord
-/** ScriptProcessor bufferSize must be 0 or a power of two in [256, 16384]. */
-const SCRIPT_PROCESSOR_BUFFER = 1_024; // 64 ms at 16 kHz
-const HOP_SAMPLES = SCRIPT_PROCESSOR_BUFFER;
+/** LiveKit/openWakeWord wants ~2 s of 16 kHz mono per predict call. */
+const WINDOW_SAMPLES = 32_000;
+/**
+ * ScriptProcessor bufferSize must be 0 or a power of two in [256, 16384].
+ * Actual device rate is often 44.1/48 kHz — we resample before scoring.
+ */
+const SCRIPT_PROCESSOR_BUFFER = 1_024;
+/** Push a scored window about every 250 ms of *target* audio (reduces IPC load). */
+const HOP_SAMPLES_16K = 4_000;
 const UNAVAILABLE_BACKOFF_MS = 4_000;
 const MAX_UNAVAILABLE_BACKOFF_MS = 30_000;
+const STATUS_LEVEL_INTERVAL_MS = 400;
 
 export type EveWakeState =
   | "off"
@@ -38,6 +44,8 @@ export function useEveWakeWord({
   const [status, setStatus] = useState("Wake word is off");
   const onCommandRef = useRef(onCommand);
   const handlingDetectionRef = useRef(false);
+  const lastScoreRef = useRef(0);
+  const lastLevelRef = useRef(0);
 
   useEffect(() => {
     onCommandRef.current = onCommand;
@@ -60,15 +68,26 @@ export function useEveWakeWord({
     let audioContext: AudioContext | undefined;
     let processor: ScriptProcessorNode | undefined;
     let source: MediaStreamAudioSourceNode | undefined;
+    let silentGain: GainNode | undefined;
     let unavailableBackoffMs = UNAVAILABLE_BACKOFF_MS;
-    const pcmRing: number[] = [];
+    /** Ring of float samples already resampled to 16 kHz. */
+    const pcmRing16k: number[] = [];
     let samplesSinceLastPush = 0;
+    let pushInFlight = false;
+    let pendingPush = false;
+    let statusTimer: number | undefined;
 
     const stopMic = (): void => {
+      if (statusTimer !== undefined) {
+        window.clearInterval(statusTimer);
+        statusTimer = undefined;
+      }
       processor?.disconnect();
+      silentGain?.disconnect();
       source?.disconnect();
       void audioContext?.close();
       processor = undefined;
+      silentGain = undefined;
       source = undefined;
       audioContext = undefined;
       for (const track of stream?.getTracks() ?? []) {
@@ -89,6 +108,12 @@ export function useEveWakeWord({
       return /whisper runtime is unavailable|voice assets are still downloading|wake-word model is not ready|failed verification|livekit-wakeword is not installed|Python voice runtime/i.test(
         message,
       );
+    };
+
+    const listeningStatus = (): string => {
+      const levelPct = Math.round(lastLevelRef.current * 100);
+      const scorePct = Math.round(lastScoreRef.current * 100);
+      return `Listening for “Hey LiveKit” · mic ${levelPct}% · score ${scorePct}%`;
     };
 
     const recordCommandSegment = async (): Promise<Blob> => {
@@ -137,15 +162,19 @@ export function useEveWakeWord({
           wavBytes,
           durationMs: COMMAND_SEGMENT_MS,
         });
-        const command = result.text.trim();
+        // Optional cleanup if Whisper still heard the wake phrase.
+        const cleaned = extractEveCommand(result.text) ?? result.text.trim();
+        const command = cleaned.trim();
         if (command && !disposed) {
           setState("processing");
-          setStatus(`Heard: “${command.slice(0, 80)}”`);
+          setStatus(`Heard: “${command.slice(0, 80)}” — sending to the model…`);
           await onCommandRef.current(command);
+        } else if (!disposed) {
+          setStatus("Heard silence after the wake word — say your request after “Hey LiveKit”.");
         }
         if (!disposed) {
           setState("listening");
-          setStatus("Listening for “Hey LiveKit” (LiveKit wake word)");
+          setStatus(listeningStatus());
           await window.circuitHarness.startWakeWord();
         }
       } catch (reason) {
@@ -160,7 +189,7 @@ export function useEveWakeWord({
             try {
               await window.circuitHarness.startWakeWord();
               setState("listening");
-              setStatus("Listening for “Hey LiveKit” (LiveKit wake word)");
+              setStatus(listeningStatus());
             } catch {
               // remain waiting
             }
@@ -175,23 +204,36 @@ export function useEveWakeWord({
     };
 
     const pushWindow = async (): Promise<void> => {
-      if (disposed || handlingDetectionRef.current || pcmRing.length < WINDOW_SAMPLES) {
+      if (disposed || handlingDetectionRef.current || pcmRing16k.length < WINDOW_SAMPLES) {
         return;
       }
-      const windowSamples = pcmRing.slice(pcmRing.length - WINDOW_SAMPLES);
-      const pcm16 = new Int16Array(windowSamples.length);
-      for (let index = 0; index < windowSamples.length; index += 1) {
-        const sample = Math.max(-1, Math.min(1, windowSamples[index] ?? 0));
-        pcm16[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      if (pushInFlight) {
+        pendingPush = true;
+        return;
       }
+      pushInFlight = true;
       try {
-        await window.circuitHarness.pushWakeWordAudio({ pcm16: Array.from(pcm16) });
-      } catch (reason) {
-        if (!disposed && isAssetUnavailable(reason)) {
-          setState("waiting_assets");
-          setStatus("Waiting for the LiveKit wake-word runtime…");
-          void window.circuitHarness.ensureVoiceAssets().catch(() => undefined);
-        }
+        do {
+          pendingPush = false;
+          if (disposed || handlingDetectionRef.current || pcmRing16k.length < WINDOW_SAMPLES) {
+            break;
+          }
+          const windowSamples = pcmRing16k.slice(pcmRing16k.length - WINDOW_SAMPLES);
+          lastLevelRef.current = rmsLevel(windowSamples);
+          const pcm16 = float32ToPcm16(Float32Array.from(windowSamples));
+          try {
+            await window.circuitHarness.pushWakeWordAudio({ pcm16: Array.from(pcm16) });
+          } catch (reason) {
+            if (!disposed && isAssetUnavailable(reason)) {
+              setState("waiting_assets");
+              setStatus("Waiting for the LiveKit wake-word runtime…");
+              void window.circuitHarness.ensureVoiceAssets().catch(() => undefined);
+            }
+            break;
+          }
+        } while (pendingPush && !disposed);
+      } finally {
+        pushInFlight = false;
       }
     };
 
@@ -216,32 +258,58 @@ export function useEveWakeWord({
         }
 
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            channelCount: 1,
+          },
           video: false,
         });
-        audioContext = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
+        // Browsers often ignore a requested 16 kHz rate and open at 44.1/48 kHz.
+        // Always measure the real rate and resample to what LiveKit expects.
+        audioContext = new AudioContext();
+        if (audioContext.state === "suspended") {
+          await audioContext.resume();
+        }
+        const sourceRate = audioContext.sampleRate || TARGET_SAMPLE_RATE;
         source = audioContext.createMediaStreamSource(stream);
         processor = audioContext.createScriptProcessor(SCRIPT_PROCESSOR_BUFFER, 1, 1);
+        // Keep the processor graph alive without playing the mic into speakers
+        // (which would feedback into wake detection / TTS).
+        silentGain = audioContext.createGain();
+        silentGain.gain.value = 0;
         processor.onaudioprocess = (event) => {
           if (disposed || handlingDetectionRef.current) return;
           const input = event.inputBuffer.getChannelData(0);
-          for (let index = 0; index < input.length; index += 1) {
-            pcmRing.push(input[index] ?? 0);
+          const inputCopy = new Float32Array(input.length);
+          inputCopy.set(input);
+          const at16k =
+            sourceRate === TARGET_SAMPLE_RATE
+              ? inputCopy
+              : downsample(inputCopy, sourceRate, TARGET_SAMPLE_RATE);
+          for (let index = 0; index < at16k.length; index += 1) {
+            pcmRing16k.push(at16k[index] ?? 0);
           }
-          if (pcmRing.length > WINDOW_SAMPLES * 2) {
-            pcmRing.splice(0, pcmRing.length - WINDOW_SAMPLES);
+          if (pcmRing16k.length > WINDOW_SAMPLES * 2) {
+            pcmRing16k.splice(0, pcmRing16k.length - WINDOW_SAMPLES);
           }
-          samplesSinceLastPush += input.length;
-          if (samplesSinceLastPush >= HOP_SAMPLES) {
+          samplesSinceLastPush += at16k.length;
+          if (samplesSinceLastPush >= HOP_SAMPLES_16K) {
             samplesSinceLastPush = 0;
             void pushWindow();
           }
         };
         source.connect(processor);
-        processor.connect(audioContext.destination);
+        processor.connect(silentGain);
+        silentGain.connect(audioContext.destination);
 
         setState("listening");
-        setStatus("Listening for “Hey LiveKit” (trained LiveKit model)");
+        setStatus(`Listening for “Hey LiveKit” (${sourceRate} Hz → 16 kHz) · say the wake phrase`);
+        statusTimer = window.setInterval(() => {
+          if (!disposed && !handlingDetectionRef.current) {
+            setStatus(listeningStatus());
+          }
+        }, STATUS_LEVEL_INTERVAL_MS);
       } catch (reason) {
         if (!disposed) {
           setState("error");
@@ -251,14 +319,22 @@ export function useEveWakeWord({
       }
     };
 
-    const unsubscribe = window.circuitHarness.onWakeWordDetection((event) => {
+    const unsubscribeDetection = window.circuitHarness.onWakeWordDetection((event) => {
+      lastScoreRef.current = event.confidence;
       void handleWake(event.confidence);
+    });
+    const unsubscribeScores = window.circuitHarness.onWakeWordScores((event) => {
+      const values = Object.values(event.scores);
+      if (values.length > 0) {
+        lastScoreRef.current = Math.max(...values);
+      }
     });
 
     void run();
     return () => {
       disposed = true;
-      unsubscribe();
+      unsubscribeDetection();
+      unsubscribeScores();
       stopMic();
     };
   }, [enabled, paused, projectId]);

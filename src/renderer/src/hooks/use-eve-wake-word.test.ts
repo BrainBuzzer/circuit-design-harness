@@ -39,8 +39,13 @@ describe("LiveKit wake phrase helpers", () => {
     });
 
     class FakeAudioContext {
+      sampleRate = 48_000;
+      state = "running";
       createMediaStreamSource() {
         return { connect: vi.fn(), disconnect: vi.fn() };
+      }
+      createGain() {
+        return { connect: vi.fn(), disconnect: vi.fn(), gain: { value: 1 } };
       }
       createScriptProcessor() {
         return {
@@ -49,6 +54,7 @@ describe("LiveKit wake phrase helpers", () => {
           onaudioprocess: null as ((event: unknown) => void) | null,
         };
       }
+      resume = vi.fn(async () => undefined);
       close = vi.fn(async () => undefined);
     }
     Object.defineProperty(globalThis, "AudioContext", {
@@ -142,6 +148,7 @@ describe("LiveKit wake phrase helpers", () => {
             detectionListener = undefined;
           };
         },
+        onWakeWordScores: () => () => undefined,
       },
     });
 
@@ -183,12 +190,18 @@ describe("LiveKit wake phrase helpers", () => {
     Object.defineProperty(globalThis, "AudioContext", {
       configurable: true,
       value: class {
+        sampleRate = 48_000;
+        state = "running";
         createMediaStreamSource() {
           return { connect: vi.fn(), disconnect: vi.fn() };
+        }
+        createGain() {
+          return { connect: vi.fn(), disconnect: vi.fn(), gain: { value: 1 } };
         }
         createScriptProcessor() {
           return { connect: vi.fn(), disconnect: vi.fn(), onaudioprocess: null };
         }
+        resume = vi.fn(async () => undefined);
         close = vi.fn(async () => undefined);
       },
     });
@@ -236,6 +249,7 @@ describe("LiveKit wake phrase helpers", () => {
         transcribeAudio: vi.fn(),
         cancelTranscription: vi.fn(async () => undefined),
         onWakeWordDetection: () => () => undefined,
+        onWakeWordScores: () => () => undefined,
       },
     });
 

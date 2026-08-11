@@ -12,22 +12,15 @@ export async function encodedAudioBlobToWav(blob: Blob): Promise<Uint8Array> {
   }
 }
 
-function mixToMono(buffer: AudioBuffer): Float32Array {
-  const mono = new Float32Array(buffer.length);
-  for (let channelIndex = 0; channelIndex < buffer.numberOfChannels; channelIndex += 1) {
-    const channel = buffer.getChannelData(channelIndex);
-    for (let index = 0; index < channel.length; index += 1) {
-      mono[index] = (mono[index] ?? 0) + (channel[index] ?? 0) / buffer.numberOfChannels;
-    }
-  }
-  return mono;
-}
-
-function downsample(
+/** Linear-average downsample/upsample between arbitrary rates (mono float32). */
+export function downsample(
   samples: Float32Array,
   sourceSampleRate: number,
   targetSampleRate: number,
 ): Float32Array {
+  if (!Number.isFinite(sourceSampleRate) || sourceSampleRate <= 0) {
+    return samples;
+  }
   if (sourceSampleRate === targetSampleRate) {
     return samples;
   }
@@ -46,6 +39,38 @@ function downsample(
     output[outputIndex] = total / (end - start);
   }
   return output;
+}
+
+/** Convert mono float32 (−1…1) to PCM16. */
+export function float32ToPcm16(samples: Float32Array): Int16Array {
+  const pcm16 = new Int16Array(samples.length);
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[index] ?? 0));
+    pcm16[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+  return pcm16;
+}
+
+/** Root-mean-square level in 0…1 for UI meters. */
+export function rmsLevel(samples: ArrayLike<number>): number {
+  if (samples.length === 0) return 0;
+  let squaredTotal = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index] ?? 0;
+    squaredTotal += sample * sample;
+  }
+  return Math.min(1, Math.sqrt(squaredTotal / samples.length) * 4);
+}
+
+function mixToMono(buffer: AudioBuffer): Float32Array {
+  const mono = new Float32Array(buffer.length);
+  for (let channelIndex = 0; channelIndex < buffer.numberOfChannels; channelIndex += 1) {
+    const channel = buffer.getChannelData(channelIndex);
+    for (let index = 0; index < channel.length; index += 1) {
+      mono[index] = (mono[index] ?? 0) + (channel[index] ?? 0) / buffer.numberOfChannels;
+    }
+  }
+  return mono;
 }
 
 function encodePcm16Wav(samples: Float32Array, sampleRate: number): Uint8Array {

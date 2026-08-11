@@ -134,7 +134,7 @@ Acceptance: domain validation rejects bad lessons; coach tools and routing tests
 - [x] Include circuit revision and capture provenance in multimodal context.
 - [x] Add editable, non-auto-send push-to-talk transcription with local multilingual Whisper, size/time/cancellation guards, and hash-verified model/runtime assets.
 - [x] First-start download of hash-pinned Whisper model + Chatterbox (Resemble AI Nano) TTS weights into userData (not installer-packaged); readiness IPC; tamper rejection.
-- [x] Add opt-in local “Eve”/“Hey Eve” via LiveKit wakeword ONNX (not continuous Whisper), command-segment Whisper only after detection, visible listening state, Pi/manual-mic/TTS pause, cross-project teardown, and recoverable wait when wake/Whisper assets are still downloading.
+- [x] Add opt-in local “Hey LiveKit” via LiveKit wakeword ONNX (not continuous Whisper), device-rate→16 kHz resample before scoring, muted ScriptProcessor graph, serialized PCM IPC, live mic level/score status, command-segment Whisper only after detection (auto-sends to the model), Pi/manual-mic/TTS pause, cross-project teardown, and recoverable wait when wake/Whisper assets are still downloading.
 - [x] Optional spoken replies via local Chatterbox-Nano sidecar, summary-only speech transform (strip dense electrical values), tone-shaped rate, and speech teardown; real-device voice quality/emotion remains unverified.
 - [ ] Add annotations/crops/redaction and capture-retention controls.
 - [ ] Replace bearer-token/self-signed compatibility with authenticated device identity and WebRTC if adaptive media, NAT traversal, or richer phone controls are required.

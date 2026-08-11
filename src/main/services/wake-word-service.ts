@@ -19,6 +19,8 @@ export class WakeWordService {
   private child: ChildProcessWithoutNullStreams | undefined;
   private ready = false;
   private startPromise: Promise<void> | undefined;
+  /** Serialize length-prefixed stdin frames so concurrent IPC writes cannot interleave. */
+  private writeChain: Promise<void> = Promise.resolve();
   private readyWaiters: Array<{
     resolve: () => void;
     reject: (error: Error) => void;
@@ -63,16 +65,31 @@ export class WakeWordService {
     const header = Buffer.alloc(4);
     header.writeUInt32LE(samples.length, 0);
     const body = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
-    await new Promise<void>((resolve, reject) => {
-      this.child?.stdin.write(Buffer.concat([header, body]), (error) => {
-        if (error) reject(error);
-        else resolve();
+    const frame = Buffer.concat([header, body]);
+    const write = (): Promise<void> =>
+      new Promise<void>((resolve, reject) => {
+        const child = this.child;
+        if (!child?.stdin.writable) {
+          reject(new Error("Wake word detector is not running."));
+          return;
+        }
+        child.stdin.write(frame, (error) => {
+          if (error) reject(error);
+          else resolve();
+        });
       });
-    });
+    // Chain writes so concurrent IPC handlers never interleave length-prefixed frames.
+    const next = this.writeChain.then(write, write);
+    this.writeChain = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    await next;
   }
 
   stop(): void {
     this.ready = false;
+    this.writeChain = Promise.resolve();
     for (const waiter of this.readyWaiters.splice(0)) {
       clearTimeout(waiter.timer);
       waiter.reject(new Error("Wake word detector stopped."));
