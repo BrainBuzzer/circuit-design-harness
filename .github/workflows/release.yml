@@ -1,0 +1,254 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without leading v (e.g. 0.1.0). Leave empty to use package.json."
+        required: false
+        type: string
+      prerelease:
+        description: "Mark GitHub Release as prerelease"
+        required: false
+        type: boolean
+        default: false
+      signed:
+        description: "Attempt Developer ID sign + notarize (requires Apple secrets)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  quality:
+    name: Pre-release quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.17
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Quality gates
+        run: bun run quality
+
+  resolve-version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    needs: quality
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute version metadata
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            raw="${GITHUB_REF_NAME}"
+            version="${raw#v}"
+            tag="$raw"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            version="${{ inputs.version }}"
+            version="${version#v}"
+            tag="v${version}"
+          else
+            version="$(node -p "require('./package.json').version")"
+            tag="v${version}"
+          fi
+
+          prerelease="false"
+          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+            prerelease="true"
+          elif [[ "$version" == *-* ]]; then
+            prerelease="true"
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
+          echo "Resolved release ${tag} (prerelease=${prerelease})"
+
+  package-macos:
+    name: Package macOS arm64
+    needs: resolve-version
+    runs-on: macos-14
+    timeout-minutes: 90
+    env:
+      RELEASE_VERSION: ${{ needs.resolve-version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.17
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Align package.json version
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = process.env.RELEASE_VERSION;
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Build app
+        run: bun run build
+
+      - name: Import Apple signing material (optional)
+        id: apple
+        env:
+          WANT_SIGNED: ${{ github.event_name == 'push' && 'true' || (inputs.signed && 'true' || 'false') }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_NAME: ${{ secrets.CSC_NAME }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${WANT_SIGNED}" != "true" || -z "${CSC_LINK:-}" ]]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "Producing ad-hoc package artifacts (signed release not requested or CSC_LINK unset)."
+            exit 0
+          fi
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$CSC_LINK" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "${CSC_KEY_PASSWORD:-}" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          if [[ -n "${APPLE_API_KEY:-}" && -n "${APPLE_API_KEY_ID:-}" ]]; then
+            mkdir -p "$RUNNER_TEMP/private_keys"
+            # Accept raw PEM or base64-encoded .p8 contents.
+            if [[ "${APPLE_API_KEY}" == ----* ]]; then
+              printf '%s\n' "$APPLE_API_KEY" > "$RUNNER_TEMP/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
+            else
+              echo "$APPLE_API_KEY" | base64 --decode > "$RUNNER_TEMP/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
+            fi
+            echo "APPLE_API_KEY=$RUNNER_TEMP/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8" >> "$GITHUB_ENV"
+            echo "APPLE_API_KEY_ID=${APPLE_API_KEY_ID}" >> "$GITHUB_ENV"
+            echo "APPLE_API_ISSUER=${APPLE_API_ISSUER}" >> "$GITHUB_ENV"
+          fi
+
+          if [[ -n "${CSC_NAME:-}" ]]; then
+            echo "CSC_NAME=${CSC_NAME}" >> "$GITHUB_ENV"
+          fi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "Apple signing material imported."
+
+      - name: Package signed + notarized macOS release
+        if: steps.apple.outputs.signed == 'true'
+        env:
+          MAC_RELEASE_SIGN: "1"
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          bun run package:mac
+
+      - name: Package ad-hoc macOS artifacts
+        if: steps.apple.outputs.signed != 'true'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          MAC_ADHOC_SIGN: "1"
+        run: |
+          set -euo pipefail
+          bun run build
+          bunx electron-builder --mac dmg zip --publish never \
+            --config.mac.identity=null \
+            --config.mac.hardenedRuntime=false \
+            --config.mac.notarize=false
+
+      - name: Collect release artifacts
+        id: artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-upload
+          shopt -s nullglob
+          for path in release/*.dmg release/*.zip release/*.blockmap; do
+            base="$(basename "$path")"
+            cp "$path" "release-upload/${base}"
+          done
+          count="$(find release-upload -type f | wc -l | tr -d ' ')"
+          if [[ "$count" -eq 0 ]]; then
+            echo "No release artifacts found under release/"
+            ls -laR release || true
+            exit 1
+          fi
+          echo "count=${count}" >> "$GITHUB_OUTPUT"
+          ls -la release-upload
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-v${{ needs.resolve-version.outputs.version }}
+          path: release-upload/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve-version.outputs.tag }}
+          name: Circuit Design Harness ${{ needs.resolve-version.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ needs.resolve-version.outputs.prerelease == 'true' }}
+          files: release-upload/*
+          fail_on_unmatched_files: true
+          body: |
+            ## Circuit Design Harness ${{ needs.resolve-version.outputs.tag }}
+
+            Local-first Electron workbench for Pi-assisted circuit design.
+
+            ### macOS arm64
+            - Install the `.dmg` or extract the `.zip`.
+            - Signed/notarized builds require Apple secrets in the repository; otherwise this release is **ad-hoc signed** for CI smoke and must not be treated as a Gatekeeper-ready distribution.
+
+            ### Verified boundary
+            See `README.md` and `TASKS.md` for the exact claim stages (structural validation, compile, processor execution, etc.).
+
+            ### Quality
+            - `bun run quality` passed in CI before packaging.

@@ -1,0 +1,13 @@
+diff --git a/meson.build b/meson.build
+index 3f46a7d8bc..952e1973ac 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1216,7 +1216,7 @@ else
+ endif
+ 
+ slirp = not_found
+-if not get_option('slirp').auto() or have_system
++if get_option('slirp').enabled() or (get_option('slirp').auto() and have_system)
+   slirp_dep = dependency('slirp', required: get_option('slirp'),
+                      method: 'pkg-config',
+                      static: true)

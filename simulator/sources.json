@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "simavr",
+      "repository": "https://github.com/buserror/simavr.git",
+      "commit": "c7a701bd7a892efb1163d4384e5ce72208f359a6",
+      "license": "GPL-3.0-or-later",
+      "targets": ["arduino_uno_r3"]
+    },
+    {
+      "id": "espressif-qemu",
+      "repository": "https://github.com/espressif/qemu.git",
+      "commit": "febae182e132e4055529be423a818225ebddaa3a",
+      "license": "GPL-2.0-or-later",
+      "patches": ["simulator/patches/espressif-qemu-disable-slirp.patch"],
+      "targets": ["esp32s3"]
+    }
+  ],
+  "productTargets": ["arduino_uno_r3", "esp32s3"]
+}

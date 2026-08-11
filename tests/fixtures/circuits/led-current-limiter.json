@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 3,
+  "revision": 1,
+  "components": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "reference": "V1",
+      "kind": "dc_source",
+      "value": "5 V",
+      "pins": [
+        { "id": "positive", "name": "+", "electricalType": "power_out" },
+        { "id": "negative", "name": "−", "electricalType": "power_in" }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "reference": "R1",
+      "kind": "resistor",
+      "value": "330 Ω",
+      "pins": [
+        { "id": "1", "name": "1", "electricalType": "passive" },
+        { "id": "2", "name": "2", "electricalType": "passive" }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "reference": "D1",
+      "kind": "led",
+      "value": "red",
+      "pins": [
+        { "id": "anode", "name": "A", "electricalType": "passive" },
+        { "id": "cathode", "name": "K", "electricalType": "passive" }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "reference": "GND1",
+      "kind": "ground",
+      "pins": [{ "id": "ground", "name": "GND", "electricalType": "power_in" }]
+    }
+  ],
+  "nets": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "name": "VCC",
+      "terminals": [
+        { "componentId": "00000000-0000-4000-8000-000000000001", "pinId": "positive" },
+        { "componentId": "00000000-0000-4000-8000-000000000002", "pinId": "1" }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000002",
+      "name": "LED_A",
+      "terminals": [
+        { "componentId": "00000000-0000-4000-8000-000000000002", "pinId": "2" },
+        { "componentId": "00000000-0000-4000-8000-000000000003", "pinId": "anode" }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000003",
+      "name": "GND",
+      "terminals": [
+        { "componentId": "00000000-0000-4000-8000-000000000003", "pinId": "cathode" },
+        { "componentId": "00000000-0000-4000-8000-000000000001", "pinId": "negative" },
+        { "componentId": "00000000-0000-4000-8000-000000000004", "pinId": "ground" }
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "kind": "max_voltage",
+      "volts": 12,
+      "rationale": "Initial breadboard work is extra-low voltage only."
+    }
+  ],
+  "schematic": {
+    "metadata": {
+      "title": "Current-limited LED",
+      "subtitle": "5 V indicator reference circuit",
+      "author": "Circuit Design Harness",
+      "documentNumber": "CDH-LED-001",
+      "paperSize": "a4",
+      "orientation": "landscape"
+    },
+    "placements": [
+      {
+        "componentId": "00000000-0000-4000-8000-000000000001",
+        "position": { "x": 120, "y": 180 },
+        "rotation": 0
+      },
+      {
+        "componentId": "00000000-0000-4000-8000-000000000002",
+        "position": { "x": 300, "y": 100 },
+        "rotation": 0
+      },
+      {
+        "componentId": "00000000-0000-4000-8000-000000000003",
+        "position": { "x": 500, "y": 180 },
+        "rotation": 90
+      },
+      {
+        "componentId": "00000000-0000-4000-8000-000000000004",
+        "position": { "x": 300, "y": 300 },
+        "rotation": 0
+      }
+    ]
+  }
+}

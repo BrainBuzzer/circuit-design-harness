@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "engine": {
+    "id": "whisper.cpp",
+    "repository": "https://github.com/ggml-org/whisper.cpp.git",
+    "commit": "592feef04a1802b18cbeffd0fd0eb5d02570c2ec",
+    "license": "MIT"
+  },
+  "model": {
+    "id": "whisper-small-multilingual-q5_1",
+    "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
+    "byteSize": 190085487,
+    "sha256": "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+    "license": "MIT"
+  }
+}

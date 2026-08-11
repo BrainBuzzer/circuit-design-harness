@@ -1,0 +1,46 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "composite": true,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@/*": ["./src/renderer/src/*"],
+      "@domain/*": ["./src/domain/*"],
+      "@shared/*": ["./src/shared/*"]
+    }
+  },
+  "include": [
+    "src/renderer/src/**/*.ts",
+    "src/renderer/src/**/*.tsx",
+    "src/shared/**/*.ts",
+    "src/domain/attachment.ts",
+    "src/domain/capture.ts",
+    "src/domain/assembly.ts",
+    "src/domain/embedded.ts",
+    "src/domain/board-pin-map.ts",
+    "src/domain/firmware-trace.ts",
+    "src/domain/ic-models.ts",
+    "src/domain/simulation-model.ts",
+    "src/domain/simulation-model-runtime.ts",
+    "src/domain/esphome-catalog.ts",
+    "src/domain/portable-path.ts",
+    "src/domain/preferences.ts",
+    "src/domain/circuit.ts",
+    "src/domain/component-catalog.ts",
+    "src/domain/schematic-geometry.ts",
+    "src/domain/circuit-simulation.ts"
+  ]
+}

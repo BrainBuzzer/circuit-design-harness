@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.17
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Biome check
+        run: bun run check
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Unit tests
+        run: bun run test
+
+      - name: Storage policy audit
+        run: bun run storage:check
+
+      - name: Production build
+        run: bun run build
+        env:
+          # Main-process build should not need display; keep electron install quiet.
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "0"
+
+  package-smoke:
+    name: macOS package smoke
+    needs: quality
+    runs-on: macos-14
+    timeout-minutes: 45
+    # Packaging needs the checked-in arm64 simulator/voice sidecars.
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.17
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build renderer/main
+        run: bun run build
+
+      - name: Ad-hoc package (dir)
+        run: bun run package:dir
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          MAC_ADHOC_SIGN: "1"
+
+      - name: Verify app bundle exists
+        run: |
+          set -euo pipefail
+          app="$(find release -name 'Circuit Design Harness.app' -type d | head -n1)"
+          test -n "$app"
+          test -d "$app/Contents/MacOS"
+          echo "Packaged: $app"
+          ls -la "$app/Contents/Resources" | head -n 40

@@ -1,0 +1,33 @@
+# Dependencies and tool output
+node_modules/
+out/
+/dist/
+coverage/
+.DS_Store
+*.log
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# Local secrets / env (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.p8
+*.key
+*.keystore
+AuthKey_*.p8
+
+# Packaged app artifacts
+release/
+
+# Built native sidecars (rebuild with bun run simulators:build / voice:build)
+# Keep empty placeholders so the directory layout is documented in git.
+simulator/dist/**
+!simulator/dist/
+!simulator/dist/.gitkeep
+voice/dist/**
+!voice/dist/
+!voice/dist/.gitkeep
